@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start --port 3000",
+    "dev": "dotenv -e ../../.env -- next dev --port 3000",
+    "build": "dotenv -e ../../.env -- next build",
+    "start": "dotenv -e ../../.env -- next start --port 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -29,6 +29,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9.14.0",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.49",

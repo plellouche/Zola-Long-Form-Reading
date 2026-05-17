@@ -8,9 +8,9 @@ Pinterest-for-long-form-reading. See `COMMAND_CENTER.md` for the full design.
 # 1. Install JS deps
 pnpm install
 
-# 2. Set up Python venv for the API
+# 2. Set up Python venv for the API (needs Python 3.12; install via Homebrew: `brew install python@3.12`)
 cd services/api
-python3 -m venv .venv
+/usr/local/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cd ../..

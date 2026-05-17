@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
+from .routers import topics, users
 
 app = FastAPI(title="Longform API", version="0.0.0")
 
@@ -12,6 +13,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(users.router)
+app.include_router(topics.router)
 
 
 @app.get("/healthz")
