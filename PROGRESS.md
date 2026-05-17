@@ -76,7 +76,42 @@
 
 ---
 
-## Phase 2+ — Not Started
+## Phase 2 — Core Data Model & Manual Article Entry
+
+**Status**: complete
+
+### Completed
+- [x] SQL migration `002_phase2_content.sql`: `sources`, `articles`, `article_topics`, `events`, full-text search column (`search_tsv` GIN-indexed for Phase 4), RLS, indexes
+- [x] Seed sources (29 entries) triaged from scaffolding doc §13 into 4 kinds: PUBLICATION, BLOG, DISCOVERY_SURFACE, PAYWALLED_FREE_SUBSET
+- [x] Seed articles (`003_seed_articles.sql`): 12 articles across sources with 23 topic links
+- [x] SQLAlchemy models for Source, Article, ArticleTopic, Event
+- [x] Pydantic schemas: SourceCreate/Update/Out, ArticleCreate/Summary/Detail, EventCreate/Out
+- [x] FastAPI endpoints:
+  - `GET /api/sources`, `GET /api/sources/{slug}`, `POST /api/sources` (admin), `PATCH /api/sources/{id}` (admin)
+  - `GET /api/articles` (filters: source_slug, topic_slug, limit, offset), `GET /api/articles/{id}`, `POST /api/articles` (admin)
+  - `POST /api/events` (accepts anonymous; user_id derived from JWT when present)
+- [x] Admin role bootstrap: on every `GET /api/users/me`, if user's email is in `ADMIN_BOOTSTRAP_EMAILS`, promote `profiles.role` to 'admin' once
+- [x] `require_admin` FastAPI dependency for admin-only routes
+- [x] Shared `<NavBar>` in root layout (auth-aware: shows login or username/admin/settings/signout)
+- [x] `/browse` page — grid of `<ArticleCard>` with source + topic filters via querystring
+- [x] `/article/[id]` page — detail view with `<ReadArticleButton>` that fires `LINK_CLICK` event then opens canonical URL in new tab
+- [x] `/settings/sources` admin page — read-only table of all sources (edit lands later)
+- [x] `/settings/articles/new` admin page — manual article entry form with topic multi-select
+- [x] `lib/auth.ts` extended with `getProfile()` and `requireAdmin()` server helpers
+- [x] Smoke tests: filter endpoints, anonymous events, admin gate, all routes return expected status codes (200/307/401/404)
+
+### Notable Phase 2 decisions
+- **Raw SQL migrations** (not Alembic) for Phase 2 too. The COMMAND_CENTER originally specified Alembic for content tables, but the Phase 1 raw-SQL pattern works well and keeps a single migration vocabulary. Alembic remains scaffolded for use later if it earns its keep.
+- **Articles have a `submitted_by` FK to profiles** even though it's not in the original schema spec. Cheap moderation hook; default null for ingested articles.
+- **`articles.search_tsv` is a generated tsvector column** (title:A, author:B, description:C weights) + GIN index. Wires Phase 4 search trivially.
+- **Article cards intentionally have no save button.** The doc lists it under Phase 2 but `user_article_states` isn't built until Phase 5. Card has read-link affordance via the whole card being a link to the detail page.
+- **`POST /api/events` accepts anonymous tracking.** RLS policy allows insert when `user_id = auth.uid() OR user_id IS NULL`, and the FastAPI bypasses RLS anyway. Click tracking is fire-and-forget from the client; failures must not break navigation.
+- **Admin bootstrap is per-request** rather than a SQL trigger. Cheap (one extra SELECT, plus one UPDATE on first time) and avoids encoding the admin list into the DB. Set `ADMIN_BOOTSTRAP_EMAILS` env var to a comma-separated list.
+- **Seed article URLs are realistic but not guaranteed live.** Real ingestion lands in Phase 3 (RSS + OG fetcher). For local browsing, the URLs are plausible; some may 404 in a real browser — replace via `/settings/articles/new` once you're admin.
+
+---
+
+## Phase 3+ — Not Started
 
 See `COMMAND_CENTER.md` §12 for scope.
 

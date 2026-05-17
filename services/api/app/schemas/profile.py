@@ -19,10 +19,14 @@ class ProfileMe(BaseModel):
     display_name: str | None
     avatar_url: str | None
     bio: str | None
-    role: str
+    role: str  # 'user' | 'admin'
     onboarded_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
 
 
 class PublicProfile(BaseModel):

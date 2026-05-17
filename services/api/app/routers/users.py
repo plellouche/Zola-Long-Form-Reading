@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import CurrentUser, get_current_user
+from ..auth_admin import maybe_bootstrap_admin
+from ..config import Settings, get_settings
 from ..database import get_session
 from ..models import Profile, Topic, UserTopic
 from ..schemas import OnboardingRequest, ProfileMe, ProfileUpdate, PublicProfile
@@ -32,8 +34,11 @@ async def _load_profile(session: AsyncSession, user_id: UUID) -> Profile:
 async def get_me(
     current: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> Profile:
-    return await _load_profile(session, current.id)
+    profile = await _load_profile(session, current.id)
+    await maybe_bootstrap_admin(session, profile, current, settings)
+    return profile
 
 
 @router.patch("/me", response_model=ProfileMe)
