@@ -1,0 +1,16 @@
+{
+  "name": "longform",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @longform/web dev",
+    "dev:api": "cd services/api && . .venv/bin/activate && uvicorn app.main:app --reload --port 8000",
+    "build": "pnpm -r --filter './apps/*' --filter './packages/*' build",
+    "lint": "pnpm -r --filter './apps/*' --filter './packages/*' lint",
+    "typecheck": "pnpm -r --filter './apps/*' --filter './packages/*' typecheck"
+  }
+}
