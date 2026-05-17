@@ -1,0 +1,1 @@
+- swipe for articles, browse, playlists
