@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
@@ -15,7 +16,7 @@ from ..schemas import OnboardingRequest, ProfileMe, ProfileUpdate, PublicProfile
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-async def _load_profile(session: AsyncSession, user_id: str) -> Profile:
+async def _load_profile(session: AsyncSession, user_id: UUID) -> Profile:
     result = await session.execute(select(Profile).where(Profile.id == user_id))
     profile = result.scalar_one_or_none()
     if profile is None:

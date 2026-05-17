@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -14,7 +15,7 @@ ASYMMETRIC_ALGS = {"ES256", "RS256", "EdDSA"}
 
 @dataclass(frozen=True)
 class CurrentUser:
-    id: str
+    id: UUID
     email: str | None
     role: str  # 'authenticated' from Supabase tokens; app-level role lives on `profiles`
 
@@ -79,8 +80,16 @@ def get_current_user(
     if not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject")
 
+    try:
+        user_id = UUID(sub)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token subject is not a UUID",
+        ) from exc
+
     return CurrentUser(
-        id=sub,
+        id=user_id,
         email=payload.get("email"),
         role=payload.get("role", "authenticated"),
     )
