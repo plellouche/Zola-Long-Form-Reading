@@ -29,6 +29,11 @@ class SourceOut(BaseModel):
     trust_score: float
     is_active: bool
     last_ingested_at: datetime | None
+    last_ingest_status: str | None = None
+    last_ingest_article_count: int = 0
+    last_ingest_error: str | None = None
+    consecutive_failures: int = 0
+    article_count: int = 0
     created_at: datetime
 
 

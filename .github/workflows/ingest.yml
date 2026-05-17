@@ -1,0 +1,46 @@
+name: Ingest RSS feeds
+
+on:
+  schedule:
+    # Every 6 hours, on the hour (UTC). 4 runs/day × 30 sources = ~120 feed fetches/day.
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Single source slug (leave empty to ingest all active)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            packages/ingest/pyproject.toml
+
+      - name: Install ingestion package
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./packages/ingest
+
+      - name: Ingest
+        run: |
+          set -e
+          if [ -n "${{ inputs.source }}" ]; then
+            python -m longform_ingest --source "${{ inputs.source }}" -v
+          else
+            python -m longform_ingest --all
+          fi

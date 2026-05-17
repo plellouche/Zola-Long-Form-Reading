@@ -22,6 +22,7 @@
 12. [Phased Development Plan](#12-phased-development-plan)
 13. [Hosting & Deployment](#13-hosting--deployment)
 14. [Decision Log](#14-decision-log)
+15. [Scaling Roadmap](#15-scaling-roadmap)
 
 ---
 
@@ -577,22 +578,27 @@ POST /api/admin/ingest/{source_id}  # trigger manual RSS pull
 ---
 
 ### Phase 3 — Content Ingestion Pipeline
-**Goal**: New articles automatically pulled from RSS feeds.
+**Goal**: New articles automatically pulled from RSS feeds, with the production-shape concerns built in from the start (rate limits, conditional GET, robots.txt, observability).
 
 **Tasks**:
-- [ ] `packages/ingest`: install feedparser, httpx, python-dateutil
-- [ ] `rss.py`: fetch feed, parse entries, normalize to article schema
-- [ ] `og_fetcher.py`: given URL, fetch OG tags (title, description, image, author, date)
-- [ ] `robots.py`: check robots.txt before fetching any URL
-- [ ] Deduplication by `canonical_url`
-- [ ] Auto-topic tagging: keyword map + source default topics
-- [ ] APScheduler setup in FastAPI: RSS poll job every 6 hours
-- [ ] `POST /api/ingest/url` endpoint: submit URL → returns draft article metadata
-- [ ] "Submit URL" UI on browse page (floating button)
-- [ ] Admin: `/settings/sources` shows last ingested timestamp, article count per source
-- [ ] Manual trigger: `POST /api/admin/ingest/{source_id}`
+- [ ] Migration: add ingestion state columns to `sources` (`last_ingest_etag`, `last_ingest_modified`, `last_ingest_status`, `last_ingest_error`, `last_ingest_article_count`) + new `ingestion_runs` table for observability
+- [ ] `packages/ingest`: feedparser, httpx, python-dateutil, beautifulsoup4 deps
+- [ ] `robots.py`: `RobotsCache` — per-host robots.txt fetch + parse, with TTL
+- [ ] `rate_limit.py`: per-host `asyncio.Semaphore` registry (default 2 concurrent)
+- [ ] `rss.py`: fetch feed with `If-None-Match` / `If-Modified-Since` from source state; parse via feedparser; normalize to article dicts; return `(articles, new_etag, new_modified)`
+- [ ] `og.py`: given URL, fetch + parse OpenGraph tags (httpx + bs4), respecting robots.txt
+- [ ] `topics.py`: keyword map → topic_slugs; combined with per-source default topic weights
+- [ ] `runner.py`: `ingest_source(source_id)` async function — idempotent (canonical_url unique); writes new articles + topic links; records an `ingestion_runs` row
+- [ ] `cli.py`: `python -m longform_ingest --all` or `--source <slug>`
+- [ ] FastAPI: `POST /api/admin/sources/{id}/ingest` triggers `runner.ingest_source` in the background
+- [ ] FastAPI: `POST /api/ingest/url` returns draft OG metadata for admin review (no DB write)
+- [ ] `/api/sources` response includes `article_count` and ingestion stats
+- [ ] Admin UI: `/settings/sources` shows last_ingested_at, last status, article count, "Ingest now" button
+- [ ] Admin UI: "Submit URL" button on `/browse` → OG draft → confirm + save form
+- [ ] `.github/workflows/ingest.yml` runs `python -m longform_ingest --all` every 6 hours (cron) and on manual workflow_dispatch
+- [ ] Anchor seed `articles_default_topics` mapping for each source (e.g. `alpinist` → `mountaineering-climbing` weight 0.9)
 
-**Done when**: RSS jobs run on schedule; new articles appear automatically; can submit a URL and it creates an article.
+**Done when**: GH Actions cron runs successfully against all active sources; new articles appear in `/browse` without manual intervention; admin can re-ingest one source on demand; `ingestion_runs` shows per-run stats.
 
 ---
 
@@ -752,6 +758,54 @@ DATABASE_URL=                # postgres connection string from Supabase
 | 2026-02-25 | All sources default to REDIRECT_ONLY | Conservative copyright stance, legally safe from day one | Full-text scraping (copyright risk) |
 | 2026-02-25 | APScheduler for cron (MVP) | No additional infrastructure; upgrade path to Celery when needed | Celery + Redis (premature for MVP) |
 | 2026-02-25 | Web-first, mobile-later architecture | Monorepo structured with shared packages from day one to avoid migration cost | Web-only forever, separate mobile codebase |
+| 2026-05-17 | GitHub Actions cron over APScheduler | Render free tier sleeps; ingestion logic is Python; GH Actions free tier covers 30 sources × 4 runs/day easily | APScheduler (sleeps with API), Supabase pg_cron (can't run Python) |
+| 2026-05-17 | Raw SQL migrations in `infra/supabase/migrations/`, not Alembic | Phase 1 needed `auth.users` triggers Alembic can't touch; consistency wins over autogeneration for MVP scale | Alembic (still scaffolded, available if it earns its keep later) |
+
+---
+
+## 15. Scaling Roadmap
+
+This section documents the production-shape pressure points and the specific migrations needed at each volume threshold. The schema is already designed to absorb most of these without restructuring; this is the **what changes when**.
+
+### Core principle: relevance, not volume
+
+Storage is essentially free at the volumes we care about (100k articles × ~1 KB metadata = 100 MB, trivial on Supabase Pro). The hard problem is **discovery** — making 10k articles feel like 50 great ones to each user. The schema's `events`, `user_article_states`, `quality_score`, `save_count`, and `finish_count` columns exist from day one so that once you have ~100 users generating signals, ranking improves automatically. **You do not curate at scale by hand; the users implicitly do it.**
+
+### Volume thresholds
+
+| Threshold | What changes | Effort |
+|---|---|---|
+| **~1k articles** (end of Phase 3, ~weeks) | RSS poll already running. Keyword-based topic tagging is "good enough." | Already done. |
+| **~10k articles** | `OFFSET`-based pagination starts to slow. Switch `/api/articles` to cursor pagination (`WHERE (created_at, id) < (cursor)`). Keyword tagging starts producing noticeable false positives — start collecting OG image dimensions to filter podcast/video junk. | ~1 day |
+| **~50k articles** | Replace keyword topic tagging with sentence embeddings (`text-embedding-3-small` at ~$0.02 / 1k articles, or local `all-MiniLM-L6-v2`). Store as `pg_vector` column. Cosine search is still brute-force but acceptable. | ~3 days |
+| **~100k articles** | Add HNSW index on the embeddings column for approximate nearest neighbor. Add a janitor cron: archive articles >2yr old with zero saves into a cold table; mark canonical URLs that 404 for 30 days as dead. | ~2 days |
+| **~30 sources** (now) | Per-host `asyncio.Semaphore(2)` rate limit + conditional GET. Built into Phase 3. | Built in. |
+| **~200 sources** | Move ingestion from one big GH Action job to a fan-out matrix (parallel jobs by source). Add per-domain backoff state. | ~1 day |
+| **~1k users generating signals** | Wire `quality_score` recompute from save-rate × finish-rate × dwell, nightly. Currently a static prior. | ~1 day |
+| **~10k MAU** | Outgrow Render free + Supabase free. Render Starter ($7/mo) + Supabase Pro ($25/mo). Consider moving recs compute off the API process to a separate worker. | Infra change, not code |
+
+### What stays REDIRECT_ONLY forever
+
+Storing full text is a legal and operational liability we shouldn't take on. The path forward is metadata + outbound link, period. The `FULLTEXT_ALLOWED` policy exists for sources we explicitly license or for our own essays — not as a scraping escape hatch.
+
+### What we explicitly defer
+
+These look like obvious wins but trap effort or scope:
+
+- **Real-time freshness** (sub-hour). Longform is, by definition, not a news app. Polling every 6h is correct.
+- **Human curation queue.** Bottlenecks on the operator. Source-level trust score + per-article user signals does the work — and is the entire point of the recs engine.
+- **Cross-source dedup beyond canonical_url.** Two outlets running the same essay is rare and not worth fuzzy-matching effort until users complain.
+- **Auto-scraping of paywalled outlets.** Copyright risk + abuse-detection risk. `PAYWALLED_FREE_SUBSET` sources only get articles that are confirmed free.
+- **Article-level moderation API.** Wait for user reports. Premature otherwise.
+
+### Per-source ingestion etiquette (locked in Phase 3)
+
+- robots.txt respected before any fetch.
+- One User-Agent identifying the app + an email contact.
+- `If-None-Match` / `If-Modified-Since` on every RSS fetch — 304 means we don't re-parse the feed.
+- Max 2 concurrent fetches per host.
+- Exponential backoff on 429/5xx; mark source `is_active=false` after 5 consecutive failures (admin re-enables manually).
+- Per-run stats land in `ingestion_runs` (Phase 3 migration); dashboard reads them later.
 
 ---
 

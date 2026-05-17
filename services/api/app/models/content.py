@@ -41,6 +41,16 @@ class Source(Base):
     last_ingested_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    last_ingest_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_ingest_etag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_ingest_modified: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_ingest_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_ingest_article_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

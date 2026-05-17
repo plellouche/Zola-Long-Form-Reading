@@ -111,7 +111,56 @@
 
 ---
 
-## Phase 3+ — Not Started
+## Phase 3 — Content Ingestion Pipeline
+
+**Status**: complete
+
+### Completed
+- [x] Migration 005: `sources` ingestion-state columns (`last_ingest_etag`, `last_ingest_modified`, `last_ingest_status`, `last_ingest_error`, `last_ingest_article_count`, `consecutive_failures`), new `ingestion_runs` observability table, new `source_default_topics` priors table (29 priors seeded)
+- [x] `packages/ingest` built with these modules:
+  - `config` — env loading (walks up from CWD for `.env`)
+  - `rate_limit` — per-host `asyncio.Semaphore(2)` registry
+  - `robots` — async robots.txt cache (6-hour TTL)
+  - `rss` — feedparser + conditional GET (`If-None-Match` / `If-Modified-Since`)
+  - `og` — httpx + BeautifulSoup OpenGraph metadata
+  - `topics` — keyword-map scorer combined with per-source priors
+  - `db` — asyncpg thin layer (idempotent inserts on `canonical_url`)
+  - `runner` — orchestrates per-source ingest; writes `ingestion_runs` rows
+  - `cli` / `__main__` — `python -m longform_ingest --all | --source <slug> | --url <url>`
+- [x] FastAPI: `POST /api/admin/sources/{id}/ingest` (admin, queues a background task), `POST /api/ingest/url` (admin, returns OG draft)
+- [x] `GET /api/sources` now returns `article_count`, `last_ingest_status`, `last_ingest_article_count`, `last_ingest_error`, `consecutive_failures`
+- [x] Admin UI `/settings/sources`: per-source status badge, article count, "Ingest now" button (triggers backend, refreshes after ~3s)
+- [x] Admin UI `/settings/articles/new`: "Submit URL" panel that fetches OG metadata via FastAPI and pre-fills the form
+- [x] `.github/workflows/ingest.yml`: cron every 6h (UTC) + `workflow_dispatch` for manual runs; `DATABASE_URL` from `secrets.DATABASE_URL`; `concurrency: group=ingest, cancel-in-progress=false`
+- [x] Live ingestion verified: 184 new articles pulled across 17/18 active sources on first full run; 1 source (`r/longform`) correctly BLOCKED by Reddit's robots.txt
+
+### Notable Phase 3 decisions
+- **GitHub Actions cron over APScheduler.** Already decided in Phase 0 but confirmed in implementation: ingestion runs as `python -m longform_ingest --all` inside a GH Action, no dependency on the FastAPI process being up.
+- **`packages/ingest` is installed non-editable on macOS dev.** Root cause: macOS auto-applies `UF_HIDDEN` to `.pth` files in `site-packages` when the venv lives in `~/Documents/Long Form Reading App/...` (path with spaces). Python's `site.py` skips hidden `.pth` files, so PEP 660 editable installs don't get processed — meaning `python -m longform_ingest` fails with `ModuleNotFoundError` despite a successful `pip install -e`. Non-editable installs copy the source into `site-packages/longform_ingest/` directly (directories aren't gated by the hidden flag). Trade-off: `pip install --force-reinstall ../../packages/ingest` after every change to ingest code locally. Linux CI is unaffected. Documented in `services/api/README.md`.
+- **`asyncpg` directly in the ingest package**, not SQLAlchemy. The runner is a different process from the API server and doesn't need the ORM. Avoids cross-package model imports.
+- **Conditional GET from day one.** Every RSS fetch sends `If-None-Match` and `If-Modified-Since`. 304 responses skip parsing entirely. Per-source `etag` and `last_modified` persist between runs.
+- **Per-host concurrency cap of 2.** Default semaphore prevents hammering any one publisher with parallel requests even if many sources happen to share a host.
+- **Auto-deactivation after 5 consecutive failures.** `consecutive_failures` resets to 0 on each OK/NO_CHANGES; once it hits `MAX_CONSECUTIVE_FAILURES`, `is_active` flips to false and the source stops being ingested. Admin re-enables via SQL or future admin UI toggle.
+- **Background-task model in FastAPI** for the manual "Ingest now" button. `BackgroundTasks` fires the runner after the response returns; the admin UI refreshes 3 seconds later to show new state. For large feeds this is fine; if we ever need to track running jobs we'd switch to writing pending status into `ingestion_runs` immediately.
+- **Robots.txt failure is permissive.** If we can't fetch a host's robots.txt, we allow the fetch. Aggressive bots get blocked at the application layer (publication-specific 403s) anyway.
+- **Topic auto-tagging is keyword + source priors, not embeddings.** Per the §15 scaling roadmap: keyword matching is "good enough" up to ~50k articles. Embedding swap is a known future migration with no schema change.
+
+### How to run locally
+```bash
+# After `pip install ../../packages/ingest`:
+python -m longform_ingest --source aeon -v       # one source
+python -m longform_ingest --all                   # all active sources
+python -m longform_ingest --url https://...       # OG fetch only, no DB write
+```
+
+### GitHub Actions setup
+- Add `DATABASE_URL` to repo secrets (Settings → Secrets and variables → Actions)
+- First run via Actions → "Ingest RSS feeds" → "Run workflow"
+- Subsequent runs every 6h on the cron
+
+---
+
+## Phase 4+ — Not Started
 
 See `COMMAND_CENTER.md` §12 for scope.
 

@@ -3,28 +3,43 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_admin import require_admin
 from ..database import get_session
-from ..models import Source
+from ..models import Article, Source
 from ..schemas import SourceCreate, SourceOut, SourceUpdate
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
+
+
+def _to_out(source: Source, article_count: int) -> SourceOut:
+    base = SourceOut.model_validate(source)
+    base.article_count = article_count
+    return base
 
 
 @router.get("", response_model=list[SourceOut])
 async def list_sources(
     active: bool | None = Query(default=None, description="Filter by is_active"),
     session: AsyncSession = Depends(get_session),
-) -> list[Source]:
-    stmt = select(Source).order_by(Source.name)
+) -> list[SourceOut]:
+    count_subq = (
+        select(Article.source_id, func.count(Article.id).label("n"))
+        .group_by(Article.source_id)
+        .subquery()
+    )
+    stmt = (
+        select(Source, func.coalesce(count_subq.c.n, 0))
+        .outerjoin(count_subq, count_subq.c.source_id == Source.id)
+        .order_by(Source.name)
+    )
     if active is not None:
         stmt = stmt.where(Source.is_active.is_(active))
     result = await session.execute(stmt)
-    return list(result.scalars().all())
+    return [_to_out(src, int(n)) for src, n in result.all()]
 
 
 @router.get("/{slug}", response_model=SourceOut)
