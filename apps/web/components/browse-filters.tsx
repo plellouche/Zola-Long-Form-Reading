@@ -1,14 +1,20 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-
 import type { SortKey, SourceBrief, Topic } from '@/lib/api-types';
 
 type Props = {
   sources: SourceBrief[];
   topics: Topic[];
-  basePath?: string; // default: /browse
+  basePath?: string;
+  /** Current search params from the page server component. */
+  selected?: {
+    q?: string;
+    source?: string;
+    topic?: string;
+    min_minutes?: string;
+    max_minutes?: string;
+    from_date?: string;
+    to_date?: string;
+    sort?: string;
+  };
 };
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -18,45 +24,21 @@ const SORT_LABELS: Record<SortKey, string> = {
 };
 
 /**
- * Plain HTML form (GET) — the browser handles navigation, the server renders
- * fresh with the new searchParams. No React event handlers in the hot path,
- * so it works whether or not hydration has completed.
+ * Server component — plain HTML form, no React state, no JS dependency.
+ * Inputs are uncontrolled with defaultValue read from the current URL
+ * params (passed in by the page). The browser submits the form natively;
+ * empty fields are tolerated by the page's buildQuery (which falsy-filters).
  *
- * Inputs use conditional `name` attributes: when a field is empty (or sort
- * is the default), the attribute isn't rendered, so the browser omits it
- * from the submitted URL — keeping URLs clean.
+ * Why uncontrolled: a controlled <input value=...> with a conditional `name`
+ * attribute (the previous attempt) only got the `name` rendered AFTER React
+ * re-rendered post-onChange. If hydration was incomplete or React batched the
+ * update, the submit handler ran before the attribute was applied — the form
+ * submitted with NO fields, ending up at /browse? with empty params.
  */
-export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) {
-  const params = useSearchParams();
-
-  const [q, setQ] = useState(params.get('q') ?? '');
-  const [source, setSource] = useState(params.get('source') ?? '');
-  const [topic, setTopic] = useState(params.get('topic') ?? '');
-  const [minMin, setMinMin] = useState(params.get('min_minutes') ?? '');
-  const [maxMin, setMaxMin] = useState(params.get('max_minutes') ?? '');
-  const [fromDate, setFromDate] = useState(params.get('from_date') ?? '');
-  const [toDate, setToDate] = useState(params.get('to_date') ?? '');
-  const [sort, setSort] = useState<SortKey>((params.get('sort') as SortKey) || 'newest');
-
-  // Re-sync local state if the URL changes externally (back/forward, Reset link, etc.)
-  useEffect(() => {
-    setQ(params.get('q') ?? '');
-    setSource(params.get('source') ?? '');
-    setTopic(params.get('topic') ?? '');
-    setMinMin(params.get('min_minutes') ?? '');
-    setMaxMin(params.get('max_minutes') ?? '');
-    setFromDate(params.get('from_date') ?? '');
-    setToDate(params.get('to_date') ?? '');
-    setSort((params.get('sort') as SortKey) || 'newest');
-  }, [params]);
-
+export function BrowseFilters({ sources, topics, basePath = '/browse', selected = {} }: Props) {
   const selectCls =
     'rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--foreground))]';
   const inputCls = selectCls;
-
-  // Conditional name attribute: when undefined, the browser omits the field
-  // from the submitted URL — keeps URLs clean when filters are unset.
-  const nameWhenSet = (cond: boolean, name: string) => (cond ? name : undefined);
 
   return (
     <form
@@ -68,21 +50,15 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Search</span>
         <input
           type="search"
-          name={nameWhenSet(!!q, 'q')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+          name="q"
+          defaultValue={selected.q ?? ''}
           placeholder="climate, alpine, philosophy…"
           className={inputCls}
         />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Topic</span>
-        <select
-          name={nameWhenSet(!!topic, 'topic')}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          className={selectCls}
-        >
+        <select name="topic" defaultValue={selected.topic ?? ''} className={selectCls}>
           <option value="">All</option>
           {topics.map((t) => (
             <option key={t.id} value={t.slug}>{t.name}</option>
@@ -91,12 +67,7 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Source</span>
-        <select
-          name={nameWhenSet(!!source, 'source')}
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          className={selectCls}
-        >
+        <select name="source" defaultValue={selected.source ?? ''} className={selectCls}>
           <option value="">All</option>
           {sources.map((s) => (
             <option key={s.id} value={s.slug}>{s.name}</option>
@@ -107,11 +78,10 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Min min</span>
         <input
           type="number"
-          name={nameWhenSet(!!minMin, 'min_minutes')}
+          name="min_minutes"
           min={0}
           max={600}
-          value={minMin}
-          onChange={(e) => setMinMin(e.target.value)}
+          defaultValue={selected.min_minutes ?? ''}
           className={`${inputCls} w-20`}
         />
       </label>
@@ -119,11 +89,10 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Max min</span>
         <input
           type="number"
-          name={nameWhenSet(!!maxMin, 'max_minutes')}
+          name="max_minutes"
           min={0}
           max={600}
-          value={maxMin}
-          onChange={(e) => setMaxMin(e.target.value)}
+          defaultValue={selected.max_minutes ?? ''}
           className={`${inputCls} w-20`}
         />
       </label>
@@ -131,9 +100,8 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">From</span>
         <input
           type="date"
-          name={nameWhenSet(!!fromDate, 'from_date')}
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
+          name="from_date"
+          defaultValue={selected.from_date ?? ''}
           className={inputCls}
         />
       </label>
@@ -141,20 +109,14 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">To</span>
         <input
           type="date"
-          name={nameWhenSet(!!toDate, 'to_date')}
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
+          name="to_date"
+          defaultValue={selected.to_date ?? ''}
           className={inputCls}
         />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Sort</span>
-        <select
-          name={nameWhenSet(sort !== 'newest', 'sort')}
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          className={selectCls}
-        >
+        <select name="sort" defaultValue={selected.sort ?? 'newest'} className={selectCls}>
           {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
             <option key={k} value={k}>{SORT_LABELS[k]}</option>
           ))}

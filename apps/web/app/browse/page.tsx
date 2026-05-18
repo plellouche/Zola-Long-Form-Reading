@@ -64,7 +64,7 @@ export default async function BrowsePage({
         </p>
       </header>
 
-      <BrowseFilters sources={sources} topics={topics} />
+      <BrowseFilters sources={sources} topics={topics} selected={params} />
 
       {/* key forces a fresh mount of the feed when filters change so its
           internal state (items, cursor) gets reseeded from the new server fetch. */}
