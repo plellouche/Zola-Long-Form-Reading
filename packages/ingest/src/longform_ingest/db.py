@@ -12,7 +12,13 @@ from .config import database_url
 
 @asynccontextmanager
 async def connection() -> AsyncIterator[asyncpg.Connection]:
-    conn = await asyncpg.connect(database_url())
+    # statement_cache_size=0 is required when running through Supabase's
+    # transaction-mode pooler (Supavisor / pgbouncer-style). Prepared statements
+    # don't survive across pooled transactions, so asyncpg's default cache
+    # raises DuplicatePreparedStatementError. Setting it to 0 forces ad-hoc
+    # query execution. Cost is negligible at our scale; documented in
+    # COMMAND_CENTER §15.
+    conn = await asyncpg.connect(database_url(), statement_cache_size=0)
     try:
         yield conn
     finally:
