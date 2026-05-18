@@ -59,6 +59,18 @@ export async function NavBar() {
                 </Link>
               )}
               <Link
+                href="/lists"
+                className="rounded-md px-3 py-1.5 hover:bg-[hsl(var(--muted))]"
+              >
+                Lists
+              </Link>
+              <Link
+                href={`/u/${profile.username}?tab=saved`}
+                className="rounded-md px-3 py-1.5 hover:bg-[hsl(var(--muted))]"
+              >
+                Saved
+              </Link>
+              <Link
                 href={`/u/${profile.username}`}
                 className="rounded-md px-3 py-1.5 hover:bg-[hsl(var(--muted))]"
               >

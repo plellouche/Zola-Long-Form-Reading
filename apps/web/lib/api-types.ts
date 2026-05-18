@@ -45,6 +45,44 @@ export type Topic = {
 
 export type SourceBrief = { id: string; slug: string; name: string; is_active: boolean };
 
+export type UserArticleStatus = 'SAVED' | 'READING' | 'FINISHED' | 'DISMISSED';
+
+export type UserArticleState = {
+  article_id: string;
+  status: UserArticleStatus;
+  opened_at: string | null;
+  finished_at: string | null;
+  time_spent_seconds: number;
+  updated_at: string;
+};
+
+export type StatefulArticle = {
+  article: ArticleSummary;
+  state: UserArticleState;
+};
+
+export type ReadingList = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  is_public: boolean;
+  forked_from_id: string | null;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+};
+
+export type ListItem = {
+  article: ArticleSummary;
+  position: number;
+  added_at: string;
+};
+
+export type ReadingListDetail = ReadingList & {
+  items: ListItem[];
+};
+
 export type BrowseFilters = {
   q?: string;
   source?: string;

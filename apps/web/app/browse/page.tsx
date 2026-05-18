@@ -1,5 +1,7 @@
 import { ArticleFeed } from '@/components/article-feed';
 import { BrowseFilters } from '@/components/browse-filters';
+import { getUser } from '@/lib/auth';
+import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ArticleListResponse, SourceBrief, Topic } from '@/lib/api-types';
 
@@ -38,10 +40,12 @@ export default async function BrowsePage({
   const api = getServerApiClient();
   const query = buildQuery(params);
 
-  const [feed, sources, topics] = await Promise.all([
+  const user = await getUser();
+  const [feed, sources, topics, savedIds] = await Promise.all([
     api.request<ArticleListResponse>('/api/articles', { query }),
     api.request<SourceBrief[]>('/api/sources', { query: { active: 'true' } }),
     api.request<Topic[]>('/api/topics'),
+    user ? getSavedArticleIds() : Promise.resolve(new Set<string>()),
   ]);
 
   const activeFilters = [
@@ -68,7 +72,13 @@ export default async function BrowsePage({
 
       {/* key forces a fresh mount of the feed when filters change so its
           internal state (items, cursor) gets reseeded from the new server fetch. */}
-      <ArticleFeed key={JSON.stringify(query)} initial={feed} query={query} />
+      <ArticleFeed
+        key={JSON.stringify(query)}
+        initial={feed}
+        query={query}
+        showSave={!!user}
+        savedIds={Array.from(savedIds)}
+      />
     </main>
   );
 }

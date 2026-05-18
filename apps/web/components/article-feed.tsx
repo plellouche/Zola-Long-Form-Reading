@@ -12,6 +12,10 @@ type Props = {
   initial: ArticleListResponse;
   /** Query params (besides `cursor`) to forward when loading more. */
   query: Record<string, string>;
+  /** Whether the viewer is signed in (controls SaveButton visibility). */
+  showSave?: boolean;
+  /** Article IDs the viewer has already saved (seeds the toggle state). */
+  savedIds?: string[];
 };
 
 /**
@@ -23,12 +27,13 @@ type Props = {
  * component remounts when filters change. That gives us a guaranteed clean
  * state without juggling useEffect-driven resets.
  */
-export function ArticleFeed({ initial, query }: Props) {
+export function ArticleFeed({ initial, query, showSave = false, savedIds = [] }: Props) {
   const [items, setItems] = useState<ArticleSummary[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const savedSet = new Set(savedIds);
 
   const loadMore = useCallback(async () => {
     if (loading || !cursor) return;
@@ -72,7 +77,12 @@ export function ArticleFeed({ initial, query }: Props) {
     <>
       <div className="columns-1 gap-4 sm:columns-2 lg:columns-3 xl:columns-4">
         {items.map((a) => (
-          <ArticleCard key={a.id} article={a} />
+          <ArticleCard
+            key={a.id}
+            article={a}
+            showSave={showSave}
+            initiallySaved={savedSet.has(a.id)}
+          />
         ))}
       </div>
       <div ref={sentinelRef} className="h-8" />

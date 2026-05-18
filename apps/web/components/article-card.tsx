@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
 
 export type ArticleCardData = Pick<
@@ -7,7 +8,15 @@ export type ArticleCardData = Pick<
   'id' | 'title' | 'author' | 'publication_date' | 'description' | 'og_image_url' | 'reading_time_minutes' | 'source'
 >;
 
-export function ArticleCard({ article }: { article: ArticleCardData }) {
+type Props = {
+  article: ArticleCardData;
+  /** When provided, show the SaveButton. Set by feed pages once they know
+   *  whether the viewer is signed in. */
+  showSave?: boolean;
+  initiallySaved?: boolean;
+};
+
+export function ArticleCard({ article, showSave = false, initiallySaved = false }: Props) {
   const date = article.publication_date
     ? new Date(article.publication_date).toLocaleDateString(undefined, {
         year: 'numeric',
@@ -17,43 +26,50 @@ export function ArticleCard({ article }: { article: ArticleCardData }) {
     : null;
 
   return (
-    <Link
-      href={`/article/${article.id}`}
-      className="group mb-4 block break-inside-avoid overflow-hidden rounded-lg border border-[hsl(var(--border))] transition hover:border-[hsl(var(--foreground))]"
-    >
-      {article.og_image_url && (
-        <div className="overflow-hidden bg-[hsl(var(--muted))]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={article.og_image_url}
-            alt=""
-            className="w-full object-cover transition group-hover:scale-[1.02]"
-            loading="lazy"
-          />
+    <div className="group relative mb-4 break-inside-avoid">
+      {showSave && (
+        <div className="absolute right-2 top-2 z-10">
+          <SaveButton articleId={article.id} initiallySaved={initiallySaved} />
         </div>
       )}
-      <div className="flex flex-col p-4">
-        <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-          {article.source.name}
-        </div>
-        <h3 className="mt-2 text-base font-semibold leading-snug">{article.title}</h3>
-        {article.description && (
-          <p className="mt-2 line-clamp-3 text-sm text-[hsl(var(--muted-foreground))]">
-            {article.description}
-          </p>
+      <Link
+        href={`/article/${article.id}`}
+        className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition hover:border-[hsl(var(--foreground))]"
+      >
+        {article.og_image_url && (
+          <div className="overflow-hidden bg-[hsl(var(--muted))]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={article.og_image_url}
+              alt=""
+              className="w-full object-cover transition group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+          </div>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
-          {article.author && <span>{article.author}</span>}
-          {article.author && date && <span>·</span>}
-          {date && <span>{date}</span>}
-          {article.reading_time_minutes != null && (
-            <>
-              <span>·</span>
-              <span>{article.reading_time_minutes} min read</span>
-            </>
+        <div className="flex flex-col p-4">
+          <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            {article.source.name}
+          </div>
+          <h3 className="mt-2 text-base font-semibold leading-snug">{article.title}</h3>
+          {article.description && (
+            <p className="mt-2 line-clamp-3 text-sm text-[hsl(var(--muted-foreground))]">
+              {article.description}
+            </p>
           )}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
+            {article.author && <span>{article.author}</span>}
+            {article.author && date && <span>·</span>}
+            {date && <span>{date}</span>}
+            {article.reading_time_minutes != null && (
+              <>
+                <span>·</span>
+                <span>{article.reading_time_minutes} min read</span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }

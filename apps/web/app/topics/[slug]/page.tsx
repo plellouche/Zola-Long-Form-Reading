@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { ArticleFeed } from '@/components/article-feed';
+import { getUser } from '@/lib/auth';
+import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ArticleListResponse, Topic } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
@@ -33,7 +35,11 @@ export default async function TopicPage({
   };
   if (sp.sort) query.sort = sp.sort;
 
-  const feed = await api.request<ArticleListResponse>('/api/articles', { query });
+  const user = await getUser();
+  const [feed, savedIds] = await Promise.all([
+    api.request<ArticleListResponse>('/api/articles', { query }),
+    user ? getSavedArticleIds() : Promise.resolve(new Set<string>()),
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-8">
@@ -47,7 +53,13 @@ export default async function TopicPage({
         )}
       </header>
 
-      <ArticleFeed key={JSON.stringify(query)} initial={feed} query={query} />
+      <ArticleFeed
+        key={JSON.stringify(query)}
+        initial={feed}
+        query={query}
+        showSave={!!user}
+        savedIds={Array.from(savedIds)}
+      />
     </main>
   );
 }

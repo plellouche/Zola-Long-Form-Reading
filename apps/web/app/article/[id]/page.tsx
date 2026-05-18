@@ -2,7 +2,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { ReadArticleButton } from './read-button';
+import { AddToList } from '@/components/add-to-list';
+import { ArticleStateControls } from '@/components/article-state-controls';
+import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
+import type { UserArticleState, UserArticleStatus } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
 type Source = { id: string; slug: string; name: string };
@@ -27,6 +31,18 @@ type ArticleDetail = {
   topics: ArticleTopicLink[];
 };
 
+async function getMyStateForArticle(id: string): Promise<UserArticleStatus | null> {
+  try {
+    const state = await getServerApiClient().request<UserArticleState>(
+      `/api/me/articles/${id}/state`,
+    );
+    return state.status;
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 401)) return null;
+    throw err;
+  }
+}
+
 export default async function ArticlePage({
   params,
 }: {
@@ -34,6 +50,7 @@ export default async function ArticlePage({
 }) {
   const { id } = await params;
   const api = getServerApiClient();
+  const user = await getUser();
 
   let article: ArticleDetail;
   try {
@@ -43,7 +60,10 @@ export default async function ArticlePage({
     throw err;
   }
 
-  const allTopics = await api.request<Topic[]>('/api/topics');
+  const [allTopics, myStatus] = await Promise.all([
+    api.request<Topic[]>('/api/topics'),
+    user ? getMyStateForArticle(id) : Promise.resolve(null),
+  ]);
   const topicsById = new Map(allTopics.map((t) => [t.id, t]));
   const articleTopics = article.topics
     .map((link) => topicsById.get(link.topic_id))
@@ -81,6 +101,12 @@ export default async function ArticlePage({
             <span>{article.reading_time_minutes} min read</span>
           </>
         )}
+        {article.save_count > 0 && (
+          <>
+            <span>·</span>
+            <span>{article.save_count} {article.save_count === 1 ? 'save' : 'saves'}</span>
+          </>
+        )}
       </div>
 
       {article.og_image_url && (
@@ -101,16 +127,29 @@ export default async function ArticlePage({
         </p>
       )}
 
-      <div className="mt-8">
+      <div className="mt-8 flex flex-wrap items-center gap-3">
         <ReadArticleButton articleId={article.id} url={article.canonical_url} />
+        {user && <AddToList articleId={article.id} />}
       </div>
+
+      {user && (
+        <section className="mt-8 rounded-lg border border-[hsl(var(--border))] p-4">
+          <h2 className="text-sm font-medium">Your state</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+            Tracks where this article is for you. Click a label to toggle it off.
+          </p>
+          <div className="mt-3">
+            <ArticleStateControls articleId={article.id} initialStatus={myStatus} />
+          </div>
+        </section>
+      )}
 
       {articleTopics.length > 0 && (
         <div className="mt-10 flex flex-wrap gap-2">
           {articleTopics.map((t) => (
             <Link
               key={t.id}
-              href={`/browse?topic=${t.slug}`}
+              href={`/topics/${t.slug}`}
               className="rounded-full border border-[hsl(var(--border))] px-3 py-1 text-xs hover:border-[hsl(var(--foreground))]"
             >
               {t.name}

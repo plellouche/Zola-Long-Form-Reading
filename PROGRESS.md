@@ -198,7 +198,45 @@ python -m longform_ingest --url https://...       # OG fetch only, no DB write
 
 ---
 
-## Phase 5+ — Not Started
+## Phase 5 — Personal Organization
+
+**Status**: complete
+
+### Completed
+- [x] Migration 006: `user_article_states`, `lists`, `list_items` + RLS + indexes
+- [x] Trigger keeps `articles.save_count` (users in SAVED/READING/FINISHED) and `finish_count` (FINISHED) denormalized on every state change
+- [x] Trigger bumps `lists.updated_at` whenever items change so "recent activity" ordering is right
+- [x] SQLAlchemy models: `UserArticleState`, `ReadingList`, `ListItem`
+- [x] Pydantic schemas: `UserArticleStateOut`, `SetArticleStateRequest`, `StatefulArticle`, `ListBrief/Detail`, `ListCreate/Update`, `ListItemCreate`, `ListReorderRequest`
+- [x] FastAPI endpoints:
+  - `POST/GET/DELETE /api/me/articles/{id}/state` — upsert / fetch / clear (uses `pg_insert(...).on_conflict_do_update`)
+  - `GET /api/me/articles?status=SAVED|FINISHED|...` — current user's articles with state
+  - `POST/GET/PATCH/DELETE /api/lists` (+ `/{id}`) — CRUD; `?mine=true`, `?user_id=`, `?username=` filters
+  - `POST /api/lists/{id}/items` / `DELETE /api/lists/{id}/items/{article_id}` — add/remove
+  - `PUT /api/lists/{id}/reorder` — bulk reorder via `[{article_id, position}]`
+- [x] Events fired automatically on state changes (`SAVE`, `FINISH`, `DISMISS`, `OPEN`) and list adds (`LIST_ADD`)
+- [x] Frontend:
+  - `<SaveButton>` (icon variant on cards, pill variant for callouts) — toggle SAVED with optimistic UI
+  - `<ArticleStateControls>` on the article detail page — pick SAVED/READING/FINISHED/DISMISSED, click again to clear
+  - `<AddToList>` popover on the article detail — pick from owned lists or create new
+  - `/lists` — my lists with inline create form
+  - `/list/[id]` — list detail with up/down reorder, item remove, owner-only "Edit list" (rename, toggle public, delete)
+  - `/u/[username]` gains tabs: **Lists** (public to all), **Saved** + **Read** (visible only to self)
+  - NavBar: new "Lists" and "Saved" links when signed in
+  - `lib/me.ts` `getSavedArticleIds()` — one-shot fetch of viewer's saved IDs, passed to feeds so cards know whether to render the SaveButton as filled
+
+### Notable Phase 5 decisions
+- **Single `status` column** instead of separate `saved_at`/`finished_at` timestamps. Simpler schema; the trigger handles the "saves include reading + finished" interpretation so the SAVED → READING → FINISHED transition doesn't decrement `save_count`. Trade-off: you can't easily ask "was this user ever saved-but-not-yet-finished?" — but we don't need that. Events table preserves the history if we ever do.
+- **Denormalized counts via trigger**, not computed on read. Cheap, always-consistent. `recount_article_engagement(uuid)` is exposed as a helper if anything ever needs a forced refresh.
+- **204 No Content → 200 + `{"ok": true}`** for DELETE endpoints. FastAPI's body-allowed assertion trips on `status_code=204` with a `-> None` annotation; rather than fight it, return a tiny ack body.
+- **List reorder takes the full new position map**, not a delta. Clients send `[{article_id, position}, ...]`; server applies in one transaction. Simpler than "swap two" and matches drag-and-drop UX naturally if/when we add that.
+- **No drag-and-drop yet** — up/down arrow buttons on each row. DnD is real work (touch-friendly, accessible) and not blocking.
+- **SaveButton is optimistic**: UI flips instantly, API call runs in a transition, reverts on failure. The viewer's saved-set on the feed is server-fetched once per page render — fine for our scale.
+- **`/u/[username]` tabs hide Saved/Read for non-self viewers.** Saved/Read are private by intent. Lists tab respects each list's `is_public` flag (the API only returns public ones when querying another user).
+
+---
+
+## Phase 6+ — Not Started
 
 See `COMMAND_CENTER.md` §12 for scope.
 
