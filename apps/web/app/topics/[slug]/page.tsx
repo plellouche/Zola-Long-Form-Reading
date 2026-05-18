@@ -38,7 +38,7 @@ export default async function TopicPage({
   const user = await getUser();
   const [feed, savedIds] = await Promise.all([
     api.request<ArticleListResponse>('/api/articles', { query }),
-    user ? getSavedArticleIds() : Promise.resolve(new Set<string>()),
+    user ? getSavedArticleIds() : Promise.resolve<string[]>([]),
   ]);
 
   return (
@@ -58,7 +58,7 @@ export default async function TopicPage({
         initial={feed}
         query={query}
         showSave={!!user}
-        savedIds={Array.from(savedIds)}
+        savedIds={savedIds}
       />
     </main>
   );

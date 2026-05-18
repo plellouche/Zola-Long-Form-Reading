@@ -45,7 +45,7 @@ export default async function BrowsePage({
     api.request<ArticleListResponse>('/api/articles', { query }),
     api.request<SourceBrief[]>('/api/sources', { query: { active: 'true' } }),
     api.request<Topic[]>('/api/topics'),
-    user ? getSavedArticleIds() : Promise.resolve(new Set<string>()),
+    user ? getSavedArticleIds() : Promise.resolve<string[]>([]),
   ]);
 
   const activeFilters = [
@@ -77,7 +77,7 @@ export default async function BrowsePage({
         initial={feed}
         query={query}
         showSave={!!user}
-        savedIds={Array.from(savedIds)}
+        savedIds={savedIds}
       />
     </main>
   );
