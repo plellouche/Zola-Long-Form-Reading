@@ -43,17 +43,23 @@ async def _run_main(args: argparse.Namespace) -> int:
     if args.url:
         return await _run_url(args.url)
 
+    # Only ERROR counts as job failure. BLOCKED (robots.txt), NO_RSS, and
+    # NO_CHANGES (304) are all valid, expected outcomes.
+    fail_statuses = {"ERROR"}
+
     if args.source:
         result = await ingest_source_by_slug(args.source, triggered_by="cli")
         print(result)
-        return 0 if result.status in ("OK", "NO_CHANGES") else 1
+        return 1 if result.status in fail_statuses else 0
 
     if args.all:
         results = await ingest_all(triggered_by="cli")
-        ok = sum(1 for r in results if r.status in ("OK", "NO_CHANGES"))
+        errors = sum(1 for r in results if r.status in fail_statuses)
         new = sum(r.articles_inserted for r in results)
-        print(f"\n{ok}/{len(results)} sources OK; {new} new article(s) inserted.")
-        return 0 if ok == len(results) else 1
+        print(f"\n{len(results) - errors}/{len(results)} sources OK; {new} new article(s) inserted.")
+        if errors:
+            print(f"{errors} source(s) errored — see logs above.")
+        return 1 if errors > 0 else 0
 
     print("Specify --all, --source <slug>, or --url <url>.", file=sys.stderr)
     return 2
