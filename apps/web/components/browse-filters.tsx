@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { SortKey, SourceBrief, Topic } from '@/lib/api-types';
 
@@ -30,6 +30,18 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
   const [toDate, setToDate] = useState(params.get('to_date') ?? '');
   const [sort, setSort] = useState<SortKey>((params.get('sort') as SortKey) || 'newest');
 
+  // Re-sync local state if the URL changes externally (back/forward, Reset link, etc.)
+  useEffect(() => {
+    setQ(params.get('q') ?? '');
+    setSource(params.get('source') ?? '');
+    setTopic(params.get('topic') ?? '');
+    setMinMin(params.get('min_minutes') ?? '');
+    setMaxMin(params.get('max_minutes') ?? '');
+    setFromDate(params.get('from_date') ?? '');
+    setToDate(params.get('to_date') ?? '');
+    setSort((params.get('sort') as SortKey) || 'newest');
+  }, [params]);
+
   function apply(e: React.FormEvent) {
     e.preventDefault();
     const p = new URLSearchParams();
@@ -43,6 +55,10 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
     if (sort && sort !== 'newest') p.set('sort', sort);
     const qs = p.toString();
     router.push(qs ? `${basePath}?${qs}` : basePath);
+    // Next 15's Router Cache can serve a stale RSC payload when only
+    // searchParams change. refresh() forces a fresh server render so the
+    // filtered articles actually replace the unfiltered ones.
+    router.refresh();
   }
 
   function reset() {
@@ -55,6 +71,7 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
     setToDate('');
     setSort('newest');
     router.push(basePath);
+    router.refresh();
   }
 
   const selectCls =
