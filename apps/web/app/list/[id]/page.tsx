@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ForkButton } from './fork-button';
 import { ListItemRow } from './list-item-row';
 import { ListSettings } from './list-settings';
 import { getUser } from '@/lib/auth';
@@ -45,11 +46,12 @@ export default async function ListDetailPage({
         </p>
       </header>
 
-      {isOwner && (
-        <div className="mt-4">
-          <ListSettings list={list} />
-        </div>
-      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {isOwner && <ListSettings list={list} />}
+        {!isOwner && user && list.is_public && (
+          <ForkButton listId={list.id} />
+        )}
+      </div>
 
       <ol className="mt-6 space-y-3">
         {items.length === 0 ? (

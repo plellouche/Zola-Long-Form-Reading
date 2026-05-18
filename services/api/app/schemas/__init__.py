@@ -30,8 +30,11 @@ from .profile import (
     PublicProfile,
     TopicOut,
 )
+from .social import ActivityItem, FollowAck
 
 __all__ = [
+    "ActivityItem",
+    "FollowAck",
     "ArticleCreate",
     "ArticleDetail",
     "ArticleSummary",

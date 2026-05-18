@@ -236,7 +236,43 @@ python -m longform_ingest --url https://...       # OG fetch only, no DB write
 
 ---
 
-## Phase 6+ — Not Started
+## Phase 6 — Social Layer
+
+**Status**: complete
+
+### Completed
+- [x] Migration 007: `follows` table (composite PK on (follower, followee), self-follow check, dual indexes for graph walking in both directions, RLS open-read + owner-write)
+- [x] SQLAlchemy `Follow` model
+- [x] Pydantic schemas: `FollowAck`, `ActivityItem`; `PublicProfile` extended with `followers_count` / `following_count` / `am_following` / `is_self`
+- [x] FastAPI endpoints:
+  - `POST/DELETE /api/users/{username}/follow` — idempotent via `on_conflict_do_nothing`; emits FOLLOW / UNFOLLOW events
+  - `GET /api/users/{username}/followers` / `/following` — paginated profile lists
+  - `GET /api/users/{username}` augmented with counts + viewer's relationship
+  - `POST /api/lists/{id}/fork` — copies a public list (title, description, ordered items) under a new `forked_from_id` reference; rejects self-forks
+  - `GET /api/lists?following=true` — public lists from users I follow
+  - `GET /api/me/feed/activity` — recent SAVE + LIST_ADD events from followees (the "social boost" signal source for Phase 7)
+- [x] Frontend:
+  - `<FollowButton>` on `/u/[username]` with optimistic toggle + revert-on-error
+  - Followers / following counts on profile
+  - `<ForkButton>` on `/list/[id]` for non-owners viewing a public list — redirects to the new fork
+  - `/lists` rebuilt with two sections: **My lists** + **From people you follow**
+  - Home `/` rebuilt for signed-in users: "From people you follow" activity feed (column layout of `<ArticleCard>` per event with actor + relative time)
+
+### Notable Phase 6 decisions
+- **Follows are public.** Anyone can see who follows whom — matches the eventual followers/following list pages, simpler RLS, no extra "private follow" UX. If we ever want private follows it's a column flip.
+- **No denorm counts on profiles**, just `SELECT COUNT(*)` on read. Cheap with the dual indexes. Switch to denormalized + trigger if profile pages ever get hot.
+- **Activity feed is pull-model**, not fan-out-on-write. At our scale a single `SELECT … WHERE user_id IN (followees) ORDER BY created_at DESC LIMIT N` is fast. If/when the events table grows past ~10M rows, the §15 path is: precompute per-user activity into a denorm `home_feed` table, refresh on each follow event.
+- **Fork copies the snapshot, not the link.** Forks have their own item rows; later edits to the source don't propagate. `forked_from_id` keeps the lineage for attribution / "X forks" counts later.
+- **`POST /api/lists/.../fork` body is empty.** Just `{}` — the fork is fully derived from the source. Avoids a separate "ListForkRequest" schema for no information.
+- **Activity feed shows only `SAVE` and `LIST_ADD`**, not `OPEN` / `FINISH`. Saves and adds are signal-strong "this person endorses this article"; opens are weak.
+
+### Surfaces verified (unauthenticated)
+- API: `POST /api/users/{u}/follow` → 401; `POST /api/lists/{id}/fork` → 401; `GET /api/me/feed/activity` → 401; `GET /api/users/nope/followers` → 404
+- Web: `/`, `/browse` → 200; `/lists` (anon) → 307 to login; `/u/nope` → 404
+
+---
+
+## Phase 7+ — Not Started
 
 See `COMMAND_CENTER.md` §12 for scope.
 

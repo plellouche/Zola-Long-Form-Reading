@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..database import get_session
-from ..models import Article, Event, ListItem, Profile, ReadingList
+from ..models import Article, Event, Follow, ListItem, Profile, ReadingList
 from ..schemas import (
     ArticleSummary,
     ListBrief,
@@ -85,6 +85,10 @@ async def list_lists(
     user_id: UUID | None = Query(default=None),
     username: str | None = Query(default=None),
     mine: bool = Query(default=False, description="Override: return current user's lists"),
+    following: bool = Query(
+        default=False,
+        description="Return public lists from users the current user follows",
+    ),
     current: CurrentUser | None = Depends(get_current_user_optional),
     session: AsyncSession = Depends(get_session),
 ) -> list[ListBrief]:
@@ -114,7 +118,15 @@ async def list_lists(
         .limit(100)
     )
 
-    if target_user_id is not None:
+    if following:
+        if current is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+        followee_ids = select(Follow.followee_id).where(Follow.follower_id == current.id)
+        stmt = stmt.where(
+            ReadingList.user_id.in_(followee_ids),
+            ReadingList.is_public.is_(True),
+        )
+    elif target_user_id is not None:
         stmt = stmt.where(ReadingList.user_id == target_user_id)
         if current is None or current.id != target_user_id:
             stmt = stmt.where(ReadingList.is_public.is_(True))
@@ -165,6 +177,42 @@ async def delete_list(
     await session.delete(row)
     await session.commit()
     return {"ok": True}
+
+
+# ---------- fork ----------
+
+
+@router.post("/{list_id}/fork", response_model=ListDetail, status_code=status.HTTP_201_CREATED)
+async def fork_list(
+    list_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ListDetail:
+    source = await _load_list(session, list_id)
+    if not source.is_public and source.user_id != current.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
+    if source.user_id == current.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can't fork your own list")
+
+    fork = ReadingList(
+        user_id=current.id,
+        title=source.title,
+        description=source.description,
+        is_public=True,
+        forked_from_id=source.id,
+    )
+    session.add(fork)
+    await session.flush()
+
+    # Snapshot the source's current item order.
+    for pos, item in enumerate(sorted(source.items, key=lambda i: i.position)):
+        session.add(
+            ListItem(list_id=fork.id, article_id=item.article_id, position=pos)
+        )
+
+    await session.commit()
+    await session.refresh(fork)
+    return _detail(fork)
 
 
 # ---------- items ----------

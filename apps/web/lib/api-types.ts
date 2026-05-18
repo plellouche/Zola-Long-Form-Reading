@@ -29,6 +29,18 @@ export type PublicProfile = {
   display_name: string | null;
   avatar_url: string | null;
   bio: string | null;
+  followers_count: number;
+  following_count: number;
+  am_following: boolean;
+  is_self: boolean;
+};
+
+export type ActivityItem = {
+  event_id: string;
+  event_type: string;
+  created_at: string;
+  actor: PublicProfile;
+  article: ArticleSummary;
 };
 
 export type SearchResponse = {

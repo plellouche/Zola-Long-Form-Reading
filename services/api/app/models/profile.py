@@ -68,3 +68,24 @@ class UserTopic(Base):
     )
 
     profile: Mapped[Profile] = relationship(back_populates="topic_interests")
+
+
+class Follow(Base):
+    __tablename__ = "follows"
+    __table_args__ = (
+        CheckConstraint("follower_id <> followee_id", name="follows_no_self_follow"),
+    )
+
+    follower_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    followee_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )

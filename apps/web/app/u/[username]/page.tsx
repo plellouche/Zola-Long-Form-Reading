@@ -2,18 +2,16 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { ArticleCard } from '@/components/article-card';
-import { getUser, getProfile } from '@/lib/auth';
+import { FollowButton } from '@/components/follow-button';
+import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
-import type { ReadingList, StatefulArticle, UserArticleStatus } from '@/lib/api-types';
+import type {
+  PublicProfile,
+  ReadingList,
+  StatefulArticle,
+  UserArticleStatus,
+} from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
-
-type PublicProfile = {
-  id: string;
-  username: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  bio: string | null;
-};
 
 type Tab = 'lists' | 'saved' | 'read';
 
@@ -44,8 +42,7 @@ export default async function PublicProfilePage({
   }
 
   const viewer = await getUser();
-  const me = viewer ? await getProfile() : null;
-  const isSelf = me?.username === profile.username;
+  const isSelf = profile.is_self;
 
   // Fetch tab payload
   let lists: ReadingList[] = [];
@@ -71,10 +68,34 @@ export default async function PublicProfilePage({
       <Link href="/" className="text-sm text-[hsl(var(--muted-foreground))]">
         ← Home
       </Link>
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-        {profile.display_name ?? `@${profile.username}`}
-      </h1>
-      <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">@{profile.username}</p>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            {profile.display_name ?? `@${profile.username}`}
+          </h1>
+          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+            @{profile.username}
+          </p>
+        </div>
+        {viewer && !isSelf && (
+          <FollowButton
+            username={profile.username}
+            initiallyFollowing={profile.am_following}
+          />
+        )}
+      </div>
+
+      <div className="mt-3 flex gap-4 text-sm text-[hsl(var(--muted-foreground))]">
+        <span>
+          <strong className="text-[hsl(var(--foreground))]">{profile.followers_count}</strong>{' '}
+          {profile.followers_count === 1 ? 'follower' : 'followers'}
+        </span>
+        <span>
+          <strong className="text-[hsl(var(--foreground))]">{profile.following_count}</strong>{' '}
+          following
+        </span>
+      </div>
+
       {profile.bio && <p className="mt-6 max-w-2xl whitespace-pre-wrap">{profile.bio}</p>}
 
       <nav className="mt-8 flex items-center gap-1 border-b border-[hsl(var(--border))]">

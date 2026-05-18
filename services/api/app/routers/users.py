@@ -8,11 +8,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import CurrentUser, get_current_user
+from sqlalchemy import func
+
+from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..auth_admin import maybe_bootstrap_admin
 from ..config import Settings, get_settings
 from ..database import get_session
-from ..models import Profile, Topic, UserTopic
+from ..models import Follow, Profile, Topic, UserTopic
 from ..schemas import OnboardingRequest, ProfileMe, ProfileUpdate, PublicProfile
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -109,15 +111,41 @@ async def complete_onboarding(
 @router.get("/{username}", response_model=PublicProfile)
 async def get_user_by_username(
     username: str,
+    viewer: CurrentUser | None = Depends(get_current_user_optional),
     session: AsyncSession = Depends(get_session),
-) -> Profile:
-    result = await session.execute(
+) -> PublicProfile:
+    profile = await session.scalar(
         select(Profile).where(
             Profile.username == username.lower(),
             Profile.onboarded_at.is_not(None),
         )
     )
-    profile = result.scalar_one_or_none()
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return profile
+
+    followers = await session.scalar(
+        select(func.count()).select_from(Follow).where(Follow.followee_id == profile.id)
+    )
+    following = await session.scalar(
+        select(func.count()).select_from(Follow).where(Follow.follower_id == profile.id)
+    )
+    am_following = False
+    is_self = False
+    if viewer is not None:
+        is_self = viewer.id == profile.id
+        if not is_self:
+            am_following = bool(
+                await session.scalar(
+                    select(Follow).where(
+                        Follow.follower_id == viewer.id,
+                        Follow.followee_id == profile.id,
+                    )
+                )
+            )
+
+    out = PublicProfile.model_validate(profile)
+    out.followers_count = int(followers or 0)
+    out.following_count = int(following or 0)
+    out.am_following = am_following
+    out.is_self = is_self
+    return out

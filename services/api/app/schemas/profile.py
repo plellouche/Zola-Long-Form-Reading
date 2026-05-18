@@ -39,6 +39,10 @@ class PublicProfile(BaseModel):
     display_name: str | None
     avatar_url: str | None
     bio: str | None
+    followers_count: int = 0
+    following_count: int = 0
+    am_following: bool = False  # caller follows this user
+    is_self: bool = False  # caller IS this user
 
 
 class ProfileUpdate(BaseModel):
