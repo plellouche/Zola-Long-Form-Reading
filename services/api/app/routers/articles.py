@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import ColumnElement, and_, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import CurrentUser, get_current_user_optional
 from ..auth_admin import require_admin
+from ..cursor import decode_cursor, encode_cursor
 from ..database import get_session
 from ..models import Article, ArticleTopic, Source, Topic
 from ..schemas import (
@@ -19,6 +23,15 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
+
+SortKey = Literal["newest", "popular", "reading_time_asc"]
+
+
+class ArticleListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    items: list[ArticleSummary]
+    next_cursor: str | None = None
 
 
 def _summary(article: Article) -> ArticleSummary:
@@ -34,14 +47,79 @@ def _detail(article: Article) -> ArticleDetail:
     return base
 
 
-@router.get("", response_model=list[ArticleSummary])
+def _sort_columns(sort: SortKey) -> tuple[ColumnElement, ColumnElement]:
+    """Return (key_column, id_column) for the requested sort. Descending order."""
+    if sort == "newest":
+        return Article.created_at, Article.id
+    if sort == "popular":
+        return Article.save_count, Article.id
+    if sort == "reading_time_asc":
+        return Article.reading_time_minutes, Article.id
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown sort")
+
+
+def _row_cursor_value(article: Article, sort: SortKey):
+    if sort == "newest":
+        return article.created_at
+    if sort == "popular":
+        return article.save_count
+    if sort == "reading_time_asc":
+        return article.reading_time_minutes
+    return None
+
+
+def _parse_cursor_value(sort: SortKey, raw_key):
+    """Coerce JSON-decoded cursor key back to the column's Python type."""
+    if sort == "newest":
+        if isinstance(raw_key, str):
+            return datetime.fromisoformat(raw_key)
+        return raw_key
+    return raw_key
+
+
+@router.get("", response_model=ArticleListResponse)
 async def list_articles(
+    q: str | None = Query(default=None, description="Full-text search query"),
     source_slug: str | None = Query(default=None),
     topic_slug: str | None = Query(default=None),
+    min_reading_time: int | None = Query(default=None, ge=0, le=600),
+    max_reading_time: int | None = Query(default=None, ge=0, le=600),
+    from_date: date | None = Query(default=None, description="publication_date >= this"),
+    to_date: date | None = Query(default=None, description="publication_date <= this"),
+    sort: SortKey = Query(default="newest"),
+    cursor: str | None = Query(default=None),
     limit: int = Query(default=30, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
-) -> list[ArticleSummary]:
+) -> ArticleListResponse:
+    return await _execute(
+        session=session,
+        q=q,
+        source_slug=source_slug,
+        topic_slug=topic_slug,
+        min_reading_time=min_reading_time,
+        max_reading_time=max_reading_time,
+        from_date=from_date,
+        to_date=to_date,
+        sort=sort,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+async def _execute(
+    *,
+    session: AsyncSession,
+    q: str | None,
+    source_slug: str | None,
+    topic_slug: str | None,
+    min_reading_time: int | None,
+    max_reading_time: int | None,
+    from_date: date | None,
+    to_date: date | None,
+    sort: SortKey,
+    cursor: str | None,
+    limit: int,
+) -> ArticleListResponse:
     stmt = select(Article)
 
     if source_slug:
@@ -50,14 +128,59 @@ async def list_articles(
         stmt = stmt.join(ArticleTopic, ArticleTopic.article_id == Article.id).join(
             Topic, Topic.id == ArticleTopic.topic_id
         ).where(Topic.slug == topic_slug.lower())
+    if min_reading_time is not None:
+        stmt = stmt.where(Article.reading_time_minutes >= min_reading_time)
+    if max_reading_time is not None:
+        stmt = stmt.where(Article.reading_time_minutes <= max_reading_time)
+    if from_date is not None:
+        stmt = stmt.where(Article.publication_date >= from_date)
+    if to_date is not None:
+        stmt = stmt.where(Article.publication_date <= to_date)
+    if q and q.strip():
+        ts_query = func.websearch_to_tsquery("english", q)
+        stmt = stmt.where(Article.search_tsv.op("@@")(ts_query))
 
-    stmt = stmt.order_by(
-        Article.publication_date.desc().nullslast(),
-        Article.created_at.desc(),
-    ).offset(offset).limit(limit)
+    key_col, id_col = _sort_columns(sort)
+    ascending = sort == "reading_time_asc"
+
+    if ascending:
+        # reading time has nulls; exclude them for stable ordering
+        stmt = stmt.where(Article.reading_time_minutes.is_not(None))
+
+    if cursor:
+        try:
+            raw_key, last_id = decode_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            ) from exc
+        key_val = _parse_cursor_value(sort, raw_key)
+        op = ">" if ascending else "<"
+        stmt = stmt.where(
+            tuple_(key_col, id_col).op(op)(tuple_(key_val, last_id))
+        )
+
+    if ascending:
+        stmt = stmt.order_by(key_col.asc(), id_col.asc())
+    else:
+        stmt = stmt.order_by(key_col.desc(), id_col.desc())
+
+    stmt = stmt.limit(limit + 1)
 
     result = await session.execute(stmt)
-    return [_summary(a) for a in result.scalars().unique().all()]
+    fetched = list(result.scalars().unique().all())
+    has_more = len(fetched) > limit
+    items_db = fetched[:limit]
+
+    next_cursor: str | None = None
+    if has_more and items_db:
+        last = items_db[-1]
+        next_cursor = encode_cursor(_row_cursor_value(last, sort), last.id)
+
+    return ArticleListResponse(
+        items=[_summary(a) for a in items_db],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{article_id}", response_model=ArticleDetail)
@@ -111,7 +234,7 @@ async def create_article(
     session.add(article)
 
     try:
-        await session.flush()  # get article.id before topic links
+        await session.flush()
         for tid in payload.topic_ids:
             session.add(ArticleTopic(article_id=article.id, topic_id=tid, weight=1.0))
         await session.commit()

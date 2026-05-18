@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { SearchInput } from '@/components/search-input';
 import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 import { ApiError } from '@longform/api-client';
@@ -27,10 +28,11 @@ export async function NavBar() {
 
   return (
     <header className="border-b border-[hsl(var(--border))]">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
         <Link href="/" className="text-base font-semibold tracking-tight">
           Longform
         </Link>
+        <SearchInput variant="nav" />
         <nav className="flex items-center gap-1 text-sm">
           <Link
             href="/browse"

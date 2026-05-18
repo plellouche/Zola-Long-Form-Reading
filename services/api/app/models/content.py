@@ -4,7 +4,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, TSVECTOR, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -96,6 +96,8 @@ class Article(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
+    # Generated column maintained by Postgres (migration 002). Read-only from ORM.
+    search_tsv: Mapped[str] = mapped_column(TSVECTOR, nullable=False, deferred=True)
 
     source: Mapped[Source] = relationship(lazy="selectin")
     topic_links: Mapped[list["ArticleTopic"]] = relationship(

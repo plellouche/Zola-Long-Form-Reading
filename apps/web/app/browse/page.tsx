@@ -1,135 +1,72 @@
-import { ArticleCard, type ArticleCardData } from '@/components/article-card';
+import { ArticleFeed } from '@/components/article-feed';
+import { BrowseFilters } from '@/components/browse-filters';
 import { getServerApiClient } from '@/lib/server-api';
+import type { ArticleListResponse, SourceBrief, Topic } from '@/lib/api-types';
 
-type ArticleSummary = ArticleCardData & {
-  canonical_url: string;
-  content_policy: string;
-  quality_score: number;
-  created_at: string;
+const PAGE_LIMIT = 24;
+
+type SearchParams = {
+  q?: string;
+  source?: string;
+  topic?: string;
+  min_minutes?: string;
+  max_minutes?: string;
+  from_date?: string;
+  to_date?: string;
+  sort?: string;
 };
 
-type Source = { id: string; slug: string; name: string; is_active: boolean };
-type Topic = { id: string; slug: string; name: string };
+function buildQuery(p: SearchParams): Record<string, string> {
+  const out: Record<string, string> = { limit: String(PAGE_LIMIT) };
+  if (p.q) out.q = p.q;
+  if (p.source) out.source_slug = p.source;
+  if (p.topic) out.topic_slug = p.topic;
+  if (p.min_minutes) out.min_reading_time = p.min_minutes;
+  if (p.max_minutes) out.max_reading_time = p.max_minutes;
+  if (p.from_date) out.from_date = p.from_date;
+  if (p.to_date) out.to_date = p.to_date;
+  if (p.sort) out.sort = p.sort;
+  return out;
+}
 
 export default async function BrowsePage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string; topic?: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
   const api = getServerApiClient();
+  const query = buildQuery(params);
 
-  const query: Record<string, string> = { limit: '60' };
-  if (params.source) query.source_slug = params.source;
-  if (params.topic) query.topic_slug = params.topic;
-
-  const [articles, sources, topics] = await Promise.all([
-    api.request<ArticleSummary[]>('/api/articles', { query }),
-    api.request<Source[]>('/api/sources', { query: { active: 'true' } }),
+  const [feed, sources, topics] = await Promise.all([
+    api.request<ArticleListResponse>('/api/articles', { query }),
+    api.request<SourceBrief[]>('/api/sources', { query: { active: 'true' } }),
     api.request<Topic[]>('/api/topics'),
   ]);
 
+  const activeFilters = [
+    params.q && `“${params.q}”`,
+    params.topic && `topic: ${params.topic}`,
+    params.source && `source: ${params.source}`,
+    params.min_minutes && `≥${params.min_minutes} min`,
+    params.max_minutes && `≤${params.max_minutes} min`,
+    params.from_date && `from ${params.from_date}`,
+    params.to_date && `to ${params.to_date}`,
+    params.sort && params.sort !== 'newest' && `sort: ${params.sort}`,
+  ].filter(Boolean);
+
   return (
-    <main className="mx-auto max-w-6xl px-6 py-8">
+    <main className="mx-auto max-w-7xl px-6 py-8">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Browse</h1>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          {articles.length} article{articles.length === 1 ? '' : 's'}
-          {params.source && (
-            <>
-              {' '}
-              · source: <strong>{params.source}</strong>
-            </>
-          )}
-          {params.topic && (
-            <>
-              {' '}
-              · topic: <strong>{params.topic}</strong>
-            </>
-          )}
+          {activeFilters.length > 0 ? activeFilters.join(' · ') : 'All articles'}
         </p>
       </header>
 
-      <FilterBar
-        sources={sources}
-        topics={topics}
-        selectedSource={params.source ?? null}
-        selectedTopic={params.topic ?? null}
-      />
+      <BrowseFilters sources={sources} topics={topics} />
 
-      {articles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          No articles match these filters yet.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {articles.map((a) => (
-            <ArticleCard key={a.id} article={a} />
-          ))}
-        </div>
-      )}
+      <ArticleFeed initial={feed} query={query} />
     </main>
-  );
-}
-
-function FilterBar({
-  sources,
-  topics,
-  selectedSource,
-  selectedTopic,
-}: {
-  sources: Source[];
-  topics: Topic[];
-  selectedSource: string | null;
-  selectedTopic: string | null;
-}) {
-  return (
-    <form
-      method="GET"
-      action="/browse"
-      className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-[hsl(var(--border))] p-3"
-    >
-      <label className="flex items-center gap-2 text-sm">
-        <span className="text-[hsl(var(--muted-foreground))]">Source</span>
-        <select
-          name="source"
-          defaultValue={selectedSource ?? ''}
-          className="rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-sm"
-        >
-          <option value="">All</option>
-          {sources.map((s) => (
-            <option key={s.id} value={s.slug}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center gap-2 text-sm">
-        <span className="text-[hsl(var(--muted-foreground))]">Topic</span>
-        <select
-          name="topic"
-          defaultValue={selectedTopic ?? ''}
-          className="rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-sm"
-        >
-          <option value="">All</option>
-          {topics.map((t) => (
-            <option key={t.id} value={t.slug}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="submit"
-        className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1 text-sm text-[hsl(var(--background))]"
-      >
-        Apply
-      </button>
-      {(selectedSource || selectedTopic) && (
-        <a href="/browse" className="text-sm text-[hsl(var(--muted-foreground))] underline">
-          Clear
-        </a>
-      )}
-    </form>
   );
 }

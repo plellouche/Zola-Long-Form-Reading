@@ -160,7 +160,45 @@ python -m longform_ingest --url https://...       # OG fetch only, no DB write
 
 ---
 
-## Phase 4+ — Not Started
+## Phase 4 — Discovery & Search
+
+**Status**: complete
+
+### Completed
+- [x] `GET /api/articles` extended with:
+  - `q` (full-text search via `to_tsvector` / `websearch_to_tsquery` against the GIN-indexed `articles.search_tsv` column from Phase 2)
+  - `min_reading_time` / `max_reading_time`
+  - `from_date` / `to_date` (publication_date range)
+  - `sort` (`newest` | `popular` | `reading_time_asc`)
+  - `cursor` (opaque base64-encoded keyset pagination; see `app/cursor.py`)
+  - Response now `{ items, next_cursor }` instead of bare array
+- [x] `GET /api/search` — cross-type endpoint returning articles (ranked by `ts_rank_cd`) + users (matched on username/display_name)
+- [x] `GET /api/topics/{slug}` for the topic page header (article filtering still goes through `/api/articles?topic_slug=`)
+- [x] Web: `/browse` rebuilt — `<BrowseFilters>` panel (search, topic, source, reading-time range, date range, sort) + `<ArticleFeed>` masonry CSS-columns grid with `IntersectionObserver`-driven infinite scroll
+- [x] Web: `/topics/[slug]` SSR page with header + filtered feed
+- [x] Web: `/search` page (input + grouped article/user results)
+- [x] Web: `<SearchInput variant="nav">` in the top NavBar (visible md+)
+- [x] `apps/web/lib/api-types.ts` — shared client-side types mirroring API responses
+- [x] Smoke tests: cursor pagination produces correct page 2; search returns 9 climate articles; filters by min_reading_time work; web pages 200/404 as expected
+
+### Notable Phase 4 decisions
+- **Cursor pagination from day one**, per §15 of COMMAND_CENTER. Cursor is opaque to the client: server encodes `{key, id}` as URL-safe base64 JSON. The key is the value of the sort column at the boundary; `id` is the row UUID tiebreaker. Backed by `tuple_(key, id) < (cursor_key, cursor_id)` which Postgres can satisfy with a composite index walk — avoids the `OFFSET` slowdown that hits past ~10k rows.
+- **Full-text search rides on the existing `search_tsv` column.** No new schema. The column was added in migration 002 (Phase 2) precisely for this; the GIN index makes search instant at our scale.
+- **`reading_time_asc` excludes NULL reading times.** Ascending sort can't tiebreak across NULLs cleanly with tuple compare; cheaper to drop them than special-case.
+- **Search-rank ordering is intentionally not paginated.** When `q` is present and search rank is the implicit sort, page 2 won't be cleanly cursor-able (ranks aren't monotone with respect to `created_at`). For now `/api/search` returns top-N only (no pagination). `/api/articles?q=` keeps cursor pagination but orders by the explicit `sort` after filtering by FTS match — clean and predictable.
+- **CSS columns over a JS masonry library.** No JS dep, browser handles reflow, looks fine at our card sizes. If we ever want strict left-to-right ordering (CSS columns flow top-to-bottom within each column first), we can swap in `react-masonry-css` then.
+- **Skipped `GET /api/topics/{slug}/articles`** as a separate endpoint. `/api/articles?topic_slug=` covers the use case; an alias just duplicates code.
+
+### Surfaces verified
+- `/browse` — 200, supports `?q=`, `?topic=`, `?source=`, `?min_minutes=`, `?max_minutes=`, `?from_date=`, `?to_date=`, `?sort=`
+- `/topics/[slug]` — 200 for real slugs, 404 for unknown
+- `/search`, `/search?q=...` — 200
+- `/api/articles?cursor=...` — page 2 returns distinct items from page 1
+- `/api/search?q=climate` — 9 articles + 0 users (no users with "climate" in name)
+
+---
+
+## Phase 5+ — Not Started
 
 See `COMMAND_CENTER.md` §12 for scope.
 
