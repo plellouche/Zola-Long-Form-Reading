@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import type { SortKey, SourceBrief, Topic } from '@/lib/api-types';
 
@@ -17,8 +17,16 @@ const SORT_LABELS: Record<SortKey, string> = {
   reading_time_asc: 'Shortest first',
 };
 
+/**
+ * Plain HTML form (GET) — the browser handles navigation, the server renders
+ * fresh with the new searchParams. No React event handlers in the hot path,
+ * so it works whether or not hydration has completed.
+ *
+ * Inputs use conditional `name` attributes: when a field is empty (or sort
+ * is the default), the attribute isn't rendered, so the browser omits it
+ * from the submitted URL — keeping URLs clean.
+ */
 export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) {
-  const router = useRouter();
   const params = useSearchParams();
 
   const [q, setQ] = useState(params.get('q') ?? '');
@@ -42,51 +50,25 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
     setSort((params.get('sort') as SortKey) || 'newest');
   }, [params]);
 
-  function apply(e: React.FormEvent) {
-    e.preventDefault();
-    const p = new URLSearchParams();
-    if (q) p.set('q', q);
-    if (source) p.set('source', source);
-    if (topic) p.set('topic', topic);
-    if (minMin) p.set('min_minutes', minMin);
-    if (maxMin) p.set('max_minutes', maxMin);
-    if (fromDate) p.set('from_date', fromDate);
-    if (toDate) p.set('to_date', toDate);
-    if (sort && sort !== 'newest') p.set('sort', sort);
-    const qs = p.toString();
-    router.push(qs ? `${basePath}?${qs}` : basePath);
-    // Next 15's Router Cache can serve a stale RSC payload when only
-    // searchParams change. refresh() forces a fresh server render so the
-    // filtered articles actually replace the unfiltered ones.
-    router.refresh();
-  }
-
-  function reset() {
-    setQ('');
-    setSource('');
-    setTopic('');
-    setMinMin('');
-    setMaxMin('');
-    setFromDate('');
-    setToDate('');
-    setSort('newest');
-    router.push(basePath);
-    router.refresh();
-  }
-
   const selectCls =
     'rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--foreground))]';
   const inputCls = selectCls;
 
+  // Conditional name attribute: when undefined, the browser omits the field
+  // from the submitted URL — keeps URLs clean when filters are unset.
+  const nameWhenSet = (cond: boolean, name: string) => (cond ? name : undefined);
+
   return (
     <form
-      onSubmit={apply}
+      method="GET"
+      action={basePath}
       className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-[hsl(var(--border))] p-3"
     >
       <label className="flex flex-1 min-w-[200px] flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Search</span>
         <input
           type="search"
+          name={nameWhenSet(!!q, 'q')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="climate, alpine, philosophy…"
@@ -95,7 +77,12 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Topic</span>
-        <select value={topic} onChange={(e) => setTopic(e.target.value)} className={selectCls}>
+        <select
+          name={nameWhenSet(!!topic, 'topic')}
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          className={selectCls}
+        >
           <option value="">All</option>
           {topics.map((t) => (
             <option key={t.id} value={t.slug}>{t.name}</option>
@@ -104,7 +91,12 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Source</span>
-        <select value={source} onChange={(e) => setSource(e.target.value)} className={selectCls}>
+        <select
+          name={nameWhenSet(!!source, 'source')}
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          className={selectCls}
+        >
           <option value="">All</option>
           {sources.map((s) => (
             <option key={s.id} value={s.slug}>{s.name}</option>
@@ -115,6 +107,7 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Min min</span>
         <input
           type="number"
+          name={nameWhenSet(!!minMin, 'min_minutes')}
           min={0}
           max={600}
           value={minMin}
@@ -126,6 +119,7 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Max min</span>
         <input
           type="number"
+          name={nameWhenSet(!!maxMin, 'max_minutes')}
           min={0}
           max={600}
           value={maxMin}
@@ -135,15 +129,32 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">From</span>
-        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} />
+        <input
+          type="date"
+          name={nameWhenSet(!!fromDate, 'from_date')}
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+          className={inputCls}
+        />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">To</span>
-        <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} />
+        <input
+          type="date"
+          name={nameWhenSet(!!toDate, 'to_date')}
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+          className={inputCls}
+        />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Sort</span>
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={selectCls}>
+        <select
+          name={nameWhenSet(sort !== 'newest', 'sort')}
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          className={selectCls}
+        >
           {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
             <option key={k} value={k}>{SORT_LABELS[k]}</option>
           ))}
@@ -156,13 +167,12 @@ export function BrowseFilters({ sources, topics, basePath = '/browse' }: Props) 
         >
           Apply
         </button>
-        <button
-          type="button"
-          onClick={reset}
+        <a
+          href={basePath}
           className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm"
         >
           Reset
-        </button>
+        </a>
       </div>
     </form>
   );
