@@ -47,7 +47,7 @@ export default async function TopicPage({
         )}
       </header>
 
-      <ArticleFeed initial={feed} query={query} />
+      <ArticleFeed key={JSON.stringify(query)} initial={feed} query={query} />
     </main>
   );
 }

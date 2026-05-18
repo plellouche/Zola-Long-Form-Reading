@@ -66,7 +66,9 @@ export default async function BrowsePage({
 
       <BrowseFilters sources={sources} topics={topics} />
 
-      <ArticleFeed initial={feed} query={query} />
+      {/* key forces a fresh mount of the feed when filters change so its
+          internal state (items, cursor) gets reseeded from the new server fetch. */}
+      <ArticleFeed key={JSON.stringify(query)} initial={feed} query={query} />
     </main>
   );
 }

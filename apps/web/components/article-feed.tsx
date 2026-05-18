@@ -18,6 +18,10 @@ type Props = {
  * Masonry-style infinite-scroll feed. CSS column layout (no JS library)
  * + IntersectionObserver to trigger the next page when the sentinel scrolls
  * into view.
+ *
+ * NOTE: The parent should pass `key={JSON.stringify(query)}` so this
+ * component remounts when filters change. That gives us a guaranteed clean
+ * state without juggling useEffect-driven resets.
  */
 export function ArticleFeed({ initial, query }: Props) {
   const [items, setItems] = useState<ArticleSummary[]>(initial.items);
@@ -25,17 +29,6 @@ export function ArticleFeed({ initial, query }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // Reset when the query changes (e.g., filter or search input changed)
-  const queryKey = JSON.stringify(query);
-  const seededRef = useRef(queryKey);
-
-  useEffect(() => {
-    if (seededRef.current === queryKey) return;
-    seededRef.current = queryKey;
-    setItems(initial.items);
-    setCursor(initial.next_cursor);
-    setError(null);
-  }, [queryKey, initial]);
 
   const loadMore = useCallback(async () => {
     if (loading || !cursor) return;
