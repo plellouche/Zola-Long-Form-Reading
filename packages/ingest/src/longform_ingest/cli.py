@@ -43,23 +43,27 @@ async def _run_main(args: argparse.Namespace) -> int:
     if args.url:
         return await _run_url(args.url)
 
-    # Only ERROR counts as job failure. BLOCKED (robots.txt), NO_RSS, and
-    # NO_CHANGES (304) are all valid, expected outcomes.
     fail_statuses = {"ERROR"}
 
     if args.source:
+        # Single-source: explicit ask, surface ERROR as job failure.
         result = await ingest_source_by_slug(args.source, triggered_by="cli")
         print(result)
         return 1 if result.status in fail_statuses else 0
 
     if args.all:
+        # Batch: per-source errors are expected (anti-bot, transient 5xx,
+        # source-side rate limits). They're already recorded in
+        # ingestion_runs and sources.last_ingest_error. Only fail the job
+        # if MORE THAN HALF of sources errored, which signals something
+        # systemic (DB down, network outage, our bug).
         results = await ingest_all(triggered_by="cli")
         errors = sum(1 for r in results if r.status in fail_statuses)
         new = sum(r.articles_inserted for r in results)
         print(f"\n{len(results) - errors}/{len(results)} sources OK; {new} new article(s) inserted.")
         if errors:
-            print(f"{errors} source(s) errored — see logs above.")
-        return 1 if errors > 0 else 0
+            print(f"{errors} source(s) errored — see logs above and sources.last_ingest_error in DB.")
+        return 1 if errors * 2 > len(results) else 0
 
     print("Specify --all, --source <slug>, or --url <url>.", file=sys.stderr)
     return 2
