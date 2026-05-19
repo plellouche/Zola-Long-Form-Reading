@@ -9,16 +9,18 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
  * Catches Supabase implicit-flow tokens that arrive in the URL fragment.
  *
  * The `/auth/callback` route handles the PKCE / code-query flow used by
- * email-based magic links. But admin-generated `/auth/v1/verify` links (and
- * a few other paths) use Supabase's implicit flow: the access token comes
- * back as `#access_token=…&refresh_token=…&type=…`. URL fragments aren't
- * sent to the server, so server components can't see the token and the user
- * looks logged-out even though the URL contains valid credentials.
+ * the regular email OTP login. But admin-generated `/auth/v1/verify` links
+ * (and a few other Supabase paths) use the implicit flow: the access token
+ * comes back as `#access_token=…&refresh_token=…&type=…`.
  *
- * This component runs on every client render (mounted from the root layout)
- * and, if it detects a fragment, lets the Supabase browser client consume it
- * (which writes the session cookies via @supabase/ssr) then refreshes the
- * server tree so the NavBar reflects the new session.
+ * `@supabase/ssr`'s `createBrowserClient` defaults to PKCE flow and does not
+ * auto-process implicit-flow fragments. So we have to parse the fragment
+ * ourselves and call `setSession` with the tokens, which then triggers the
+ * cookie writes via the SSR cookie adapter we configured in
+ * `lib/supabase/client.ts`.
+ *
+ * This component is mounted from the root layout, runs on every client
+ * render, no-ops unless an auth fragment is present.
  */
 export function AuthFragmentHandler() {
   const router = useRouter();
@@ -26,20 +28,34 @@ export function AuthFragmentHandler() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash;
-    if (!hash || (!hash.includes('access_token') && !hash.includes('error'))) return;
+    if (!hash || hash.length < 2) return;
+
+    const params = new URLSearchParams(hash.slice(1));
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const errorCode = params.get('error') || params.get('error_code');
+
+    if (!accessToken && !errorCode) return;
 
     let cancelled = false;
     (async () => {
+      if (errorCode) {
+        // Clean the fragment so the URL doesn't keep showing the error.
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        return;
+      }
+      if (!accessToken || !refreshToken) return;
+
       const supabase = createSupabaseBrowserClient();
-      // Instantiating the browser client triggers @supabase/ssr's
-      // detectSessionInUrl handling. Wait briefly, then confirm a session
-      // exists before refreshing.
-      const { data } = await supabase.auth.getSession();
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
       if (cancelled) return;
-      // Clean the fragment so a future refresh doesn't reprocess it.
-      const cleaned = window.location.pathname + window.location.search;
-      window.history.replaceState(null, '', cleaned);
-      if (data.session) {
+      // Always clean the fragment, success or failure.
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (!error) {
+        // Re-fetch RSC payload so NavBar + page state reflect the new session.
         router.refresh();
       }
     })();
