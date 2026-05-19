@@ -1,77 +1,147 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-type Status = 'idle' | 'sending' | 'sent' | 'error';
+type Step = 'email' | 'code' | 'sending' | 'verifying';
 
+/**
+ * Email + 6-digit OTP code flow.
+ *
+ * We use the code (not the magic link) because university/corporate email
+ * scanners (Proofpoint, Microsoft Defender, Mimecast, etc.) prefetch every
+ * URL in inbound mail to check for phishing — which consumes one-time-use
+ * magic links before the user gets to click them. Codes can't be consumed
+ * by visiting a URL.
+ */
 export default function LoginPage() {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function sendCode(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setStatus('sending');
-    setErrorMessage(null);
-
+    setError(null);
+    setStep('sending');
     const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
+      // Don't set emailRedirectTo: makes Supabase send a token-only email
+      // (no link to be prefetched). The user enters the code by hand.
     });
-
-    if (error) {
-      setStatus('error');
-      setErrorMessage(error.message);
+    if (err) {
+      setError(err.message);
+      setStep('email');
     } else {
-      setStatus('sent');
+      setStep('code');
     }
   }
+
+  async function verifyCode(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setStep('verifying');
+    const supabase = createSupabaseBrowserClient();
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: code.trim(),
+      type: 'email',
+    });
+    if (err) {
+      setError(err.message);
+      setStep('code');
+    } else {
+      // Force a server-side re-render so the NavBar reflects the new session.
+      router.push('/');
+      router.refresh();
+    }
+  }
+
+  const inputCls =
+    'mt-1 block w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--foreground))]';
 
   return (
     <main className="mx-auto max-w-md px-6 py-24">
       <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>
       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-        We&rsquo;ll email you a magic link. No password required.
+        We&rsquo;ll email you a 6-digit code. No password.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-        <label className="block">
-          <span className="text-sm font-medium">Email</span>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={status === 'sending' || status === 'sent'}
-            placeholder="you@example.com"
-            className="mt-1 block w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--foreground))]"
-          />
-        </label>
-
-        <button
-          type="submit"
-          disabled={status === 'sending' || status === 'sent'}
-          className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
-        >
-          {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Check your email' : 'Send magic link'}
-        </button>
-
-        {status === 'sent' && (
+      {step !== 'code' && step !== 'verifying' ? (
+        <form onSubmit={sendCode} className="mt-8 space-y-4">
+          <label className="block">
+            <span className="text-sm font-medium">Email</span>
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={step === 'sending'}
+              placeholder="you@example.com"
+              className={inputCls}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={step === 'sending' || !email.trim()}
+            className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+          >
+            {step === 'sending' ? 'Sending…' : 'Send code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={verifyCode} className="mt-8 space-y-4">
           <p className="rounded-md border border-[hsl(var(--border))] p-3 text-sm">
-            A sign-in link was sent to <strong>{email}</strong>. Open it on this device to continue.
+            A 6-digit code was sent to <strong>{email}</strong>. It expires in 1 hour.
           </p>
-        )}
-        {status === 'error' && errorMessage && (
-          <p className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600">
-            {errorMessage}
-          </p>
-        )}
-      </form>
+          <label className="block">
+            <span className="text-sm font-medium">Code</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              autoComplete="one-time-code"
+              required
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              disabled={step === 'verifying'}
+              placeholder="123456"
+              autoFocus
+              className={`${inputCls} text-center text-lg tracking-[0.5em]`}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={step === 'verifying' || code.length !== 6}
+            className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+          >
+            {step === 'verifying' ? 'Verifying…' : 'Sign in'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStep('email');
+              setCode('');
+              setError(null);
+            }}
+            className="block w-full text-center text-xs text-[hsl(var(--muted-foreground))] underline"
+          >
+            Use a different email
+          </button>
+        </form>
+      )}
+
+      {error && (
+        <p className="mt-4 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
     </main>
   );
 }
