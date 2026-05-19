@@ -10,11 +10,15 @@ type Step = 'email' | 'code' | 'sending' | 'verifying';
 /**
  * Email + 6-digit OTP code flow.
  *
- * We use the code (not the magic link) because university/corporate email
- * scanners (Proofpoint, Microsoft Defender, Mimecast, etc.) prefetch every
- * URL in inbound mail to check for phishing — which consumes one-time-use
- * magic links before the user gets to click them. Codes can't be consumed
- * by visiting a URL.
+ * We use the code (not a magic link) because university/corporate email
+ * scanners (Microsoft Defender, Proofpoint, Mimecast, etc.) prefetch every
+ * URL in inbound mail to check for phishing, which consumes one-time-use
+ * magic-link tokens before the user gets to click them. Codes can't be
+ * consumed by visiting a URL.
+ *
+ * The Supabase magic-link email template was patched to render only the
+ * `{{ .Token }}` (no link) so the email itself never contains a clickable
+ * URL — there's nothing for a scanner to prefetch.
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -30,8 +34,6 @@ export default function LoginPage() {
     const supabase = createSupabaseBrowserClient();
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      // Don't set emailRedirectTo: makes Supabase send a token-only email
-      // (no link to be prefetched). The user enters the code by hand.
     });
     if (err) {
       setError(err.message);
@@ -55,7 +57,6 @@ export default function LoginPage() {
       setError(err.message);
       setStep('code');
     } else {
-      // Force a server-side re-render so the NavBar reflects the new session.
       router.push('/');
       router.refresh();
     }
@@ -72,32 +73,48 @@ export default function LoginPage() {
       </p>
 
       {step !== 'code' && step !== 'verifying' ? (
-        <form onSubmit={sendCode} className="mt-8 space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={step === 'sending'}
-              placeholder="you@example.com"
-              className={inputCls}
-            />
-          </label>
+        <>
+          <form onSubmit={sendCode} className="mt-8 space-y-4">
+            <label className="block">
+              <span className="text-sm font-medium">Email</span>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={step === 'sending'}
+                placeholder="you@example.com"
+                className={inputCls}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={step === 'sending' || !email.trim()}
+              className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+            >
+              {step === 'sending' ? 'Sending…' : 'Send code'}
+            </button>
+          </form>
           <button
-            type="submit"
-            disabled={step === 'sending' || !email.trim()}
-            className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+            type="button"
+            onClick={() => {
+              if (!email.trim()) {
+                setError('Enter your email first, then click this.');
+                return;
+              }
+              setError(null);
+              setStep('code');
+            }}
+            className="mt-4 block w-full text-center text-xs text-[hsl(var(--muted-foreground))] underline"
           >
-            {step === 'sending' ? 'Sending…' : 'Send code'}
+            I already have a code from a previous email
           </button>
-        </form>
+        </>
       ) : (
         <form onSubmit={verifyCode} className="mt-8 space-y-4">
           <p className="rounded-md border border-[hsl(var(--border))] p-3 text-sm">
-            A 6-digit code was sent to <strong>{email}</strong>. It expires in 1 hour.
+            Enter the 6-digit code sent to <strong>{email}</strong>. It expires in 1 hour.
           </p>
           <label className="block">
             <span className="text-sm font-medium">Code</span>
