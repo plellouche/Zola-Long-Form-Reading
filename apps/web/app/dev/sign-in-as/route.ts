@@ -49,8 +49,11 @@ export async function GET(request: Request) {
     );
   }
   const genJson = await genResp.json();
-  // properties.hashed_token is what /verify wants
-  const hashed = genJson?.properties?.hashed_token;
+  // Supabase's response shape has shifted between versions — the older
+  // SDK docs showed `properties.hashed_token`; the live Management API
+  // currently returns it at the top level. Accept either.
+  const hashed: string | undefined =
+    genJson?.hashed_token ?? genJson?.properties?.hashed_token;
   if (!hashed) {
     return NextResponse.json(
       { error: 'no hashed_token in admin response', raw: genJson },
