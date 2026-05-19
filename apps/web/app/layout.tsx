@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { AuthFragmentHandler } from '@/components/auth-fragment-handler';
 import { NavBar } from '@/components/nav-bar';
 import './globals.css';
 
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="antialiased">
+        <AuthFragmentHandler />
         <NavBar />
         {children}
       </body>
