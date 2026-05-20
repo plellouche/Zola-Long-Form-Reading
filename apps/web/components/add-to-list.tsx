@@ -1,25 +1,30 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { getBrowserApiClient } from '@/lib/api';
 import type { ReadingList } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
+type Variant = 'pill' | 'icon';
+
 type Props = {
   articleId: string;
+  /** 'pill' (default) shows "+ Add to list" text; 'icon' shows a + button for card corners. */
+  variant?: Variant;
 };
 
-type Mode = 'idle' | 'open' | 'creating';
+type Mode = 'idle' | 'open';
 
-export function AddToList({ articleId }: Props) {
+export function AddToList({ articleId, variant = 'pill' }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('idle');
   const [lists, setLists] = useState<ReadingList[] | null>(null);
   const [busyListId, setBusyListId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch lists lazily on first open
   useEffect(() => {
@@ -35,6 +40,25 @@ export function AddToList({ articleId }: Props) {
       }
     })();
   }, [mode, lists]);
+
+  // Close on outside click — important for the icon variant on cards.
+  useEffect(() => {
+    if (mode !== 'open') return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current) return;
+      if (rootRef.current.contains(e.target as Node)) return;
+      setMode('idle');
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [mode]);
+
+  function toggle(e: React.MouseEvent) {
+    // Prevent the parent <Link> on a card from navigating when we open the popover.
+    e.preventDefault();
+    e.stopPropagation();
+    setMode((m) => (m === 'idle' ? 'open' : 'idle'));
+  }
 
   async function addToList(listId: string) {
     setBusyListId(listId);
@@ -72,6 +96,8 @@ export function AddToList({ articleId }: Props) {
         body: { article_id: articleId },
       });
       setNewTitle('');
+      // Reset cached lists so the next open re-fetches and shows the new one.
+      setLists(null);
       setMode('idle');
       router.refresh();
     } catch (err) {
@@ -79,18 +105,33 @@ export function AddToList({ articleId }: Props) {
     }
   }
 
+  const triggerClass =
+    variant === 'icon'
+      ? 'inline-flex h-8 w-8 items-center justify-center rounded-md border bg-[hsl(var(--background))]/80 backdrop-blur transition border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))] hover:text-[hsl(var(--foreground))]'
+      : 'inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:border-[hsl(var(--foreground))]';
+
   return (
-    <div className="relative inline-block">
+    <div ref={rootRef} className="relative inline-block">
       <button
         type="button"
-        onClick={() => setMode((m) => (m === 'idle' ? 'open' : 'idle'))}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:border-[hsl(var(--foreground))]"
+        onClick={toggle}
+        aria-label="Add to list"
+        title="Add to list"
+        className={triggerClass}
       >
-        + Add to list
+        {variant === 'icon' ? (
+          <PlusListIcon />
+        ) : (
+          <>+ Add to list</>
+        )}
       </button>
 
-      {mode !== 'idle' && (
-        <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2 shadow-lg">
+      {mode === 'open' && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full z-30 mt-2 w-72 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2 shadow-lg"
+        >
           {lists === null ? (
             <p className="px-2 py-3 text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
           ) : lists.length === 0 ? (
@@ -103,7 +144,11 @@ export function AddToList({ articleId }: Props) {
                 <li key={l.id}>
                   <button
                     type="button"
-                    onClick={() => addToList(l.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void addToList(l.id);
+                    }}
                     disabled={busyListId === l.id}
                     className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[hsl(var(--muted))] disabled:opacity-50"
                   >
@@ -126,6 +171,7 @@ export function AddToList({ articleId }: Props) {
                 type="text"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
                 placeholder="List title"
                 maxLength={200}
                 className="flex-1 rounded-md border border-[hsl(var(--border))] bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[hsl(var(--foreground))]"
@@ -146,5 +192,27 @@ export function AddToList({ articleId }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function PlusListIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <line x1="3" y1="6" x2="14" y2="6" />
+      <line x1="3" y1="12" x2="11" y2="12" />
+      <line x1="3" y1="18" x2="11" y2="18" />
+      <line x1="18" y1="9" x2="18" y2="21" />
+      <line x1="12" y1="15" x2="24" y2="15" />
+    </svg>
   );
 }

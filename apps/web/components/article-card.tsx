@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
 
@@ -10,8 +11,8 @@ export type ArticleCardData = Pick<
 
 type Props = {
   article: ArticleCardData;
-  /** When provided, show the SaveButton. Set by feed pages once they know
-   *  whether the viewer is signed in. */
+  /** When provided, show the SaveButton + AddToList icon. Set by feed pages
+   *  once they know whether the viewer is signed in. */
   showSave?: boolean;
   initiallySaved?: boolean;
 };
@@ -28,7 +29,8 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
   return (
     <div className="group relative mb-4 break-inside-avoid">
       {showSave && (
-        <div className="absolute right-2 top-2 z-10">
+        <div className="absolute right-2 top-2 z-10 flex gap-1">
+          <AddToList articleId={article.id} variant="icon" />
           <SaveButton articleId={article.id} initiallySaved={initiallySaved} />
         </div>
       )}
