@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import articles, events, ingest, lists, me_articles, search, social, sources, topics, users
+from .routers import articles, events, ingest, lists, me_articles, recs, search, social, sources, topics, users
 
 app = FastAPI(title="Longform API", version="0.0.0")
 
@@ -24,6 +24,7 @@ app.include_router(search.router)
 app.include_router(me_articles.router)
 app.include_router(lists.router)
 app.include_router(social.router)
+app.include_router(recs.router)
 
 
 @app.get("/healthz")

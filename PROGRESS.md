@@ -272,9 +272,48 @@ python -m longform_ingest --url https://...       # OG fetch only, no DB write
 
 ---
 
-## Phase 7+ — Not Started
+## Phase 7 — Recommendation Engine
 
-See `COMMAND_CENTER.md` §12 for scope.
+**Status**: complete
+
+### Completed
+- [x] `services/api/app/recs/` package (kept inside the API process for Phase 7; will be hoisted to `packages/recs` only if scoring needs to run out-of-band)
+  - `profile.py` — `build_user_topic_profile` combines explicit onboarding picks (`user_topics`) with implicit signal from `user_article_states` (`SAVED=1.0`, `READING=1.5`, `FINISHED=2.0`, `DISMISSED=-1.5`). Negative weights clipped to 0 before normalize.
+  - `scorer.py` — sparse-dict cosine, exponential freshness decay (~half-life 21 days), `score_article` weighted per COMMAND_CENTER §10: `topic_sim*0.4 + social*0.2 + quality*0.2 + freshness*0.1 + source_trust*0.1`
+  - `diversity.py` — generic `ScoredCandidate[T]` + `apply_diversity` enforcing max 2 per source and avoiding back-to-back same-author. Constraints relax automatically if the candidate pool is small.
+  - `feed.py` — three entry points: `for_you_feed`, `related_articles`, `list_recommendations`
+- [x] FastAPI endpoints:
+  - `GET /api/feed` — personalized For You feed (auth required)
+  - `GET /api/articles/{id}/related` — public; viewer's saved/read articles excluded when auth'd
+  - `GET /api/lists/{id}/recommendations` — public for public lists, owner-only for private
+- [x] Web:
+  - Home `/` (signed-in): "For You" section above the "From people you follow" activity feed; "Save" buttons seeded from the viewer's saved-set
+  - `/article/[id]`: "Related" section at the bottom
+  - `/list/[id]`: "Suggested for this list" section at the bottom (when the list has items)
+
+### Notable Phase 7 decisions
+- **Sparse dicts, not numpy arrays.** Articles have 1–3 topics each; topic vectors stay tiny. A keyed dict + dict-intersection cosine is ~2× faster than allocating a dense numpy array at our scale. The bigger-vector future (sentence embeddings via pgvector) is what numpy is needed for; we'll cross that bridge per §15.
+- **No score cache yet.** Scoring 400 candidates × 1 user takes <100ms on the live DB; no need to precompute. If a route ever times out, the cache table goes here.
+- **Candidate pool capped at the 400 newest articles** in the last 90 days. Past that, freshness alone would dominate the ranking and topic match would matter less anyway.
+- **Engagement signal is asymmetric.** `DISMISSED` pulls the profile away from a topic, but the final profile clips negative weights to 0. This avoids the "user dismissed one math article so now they get only the OPPOSITE of math" failure mode (cosine with a negative vector ranks anti-correlated articles first).
+- **List recs add a coverage bonus.** Articles whose topics are *under-represented* in the existing list get a small score boost — so a 5-Mountain-Climbing list will start getting Nature & Environment articles suggested, not just more Mountain Climbing.
+- **For You hides articles you've already touched.** Any `user_article_states` row (any status) excludes the article. Browse + the activity feed are the path to revisit something you've saved.
+- **Falls back to "newest from same source"** for related articles when the seed has no topic tags. Better than empty.
+
+### Surfaces verified
+- API: `/api/feed` → 401 unauth; `/api/articles/{id}/related` → 6 anon-allowed; `/api/lists/{nope}/recommendations` → 404
+- Web: `/`, `/article/{id}` → 200; cards in the new sections render with working SaveButtons
+
+### Migration path (deferred, documented in §15)
+- ~50k articles: keyword-derived topic vectors → sentence-embedding vectors stored in a pgvector column. `scorer.cosine_similarity` keeps its signature; only `_bulk_article_topics` changes.
+- ~100k articles: add pgvector HNSW index; swap brute-force scoring for ANN nearest-neighbor.
+- High write rates / many users: precompute scores nightly into a `feed_cache` table; routes read cache first.
+
+---
+
+## Phase 8+ — Not Started
+
+See `COMMAND_CENTER.md` §12 for scope (Polish + Invite).
 
 ---
 

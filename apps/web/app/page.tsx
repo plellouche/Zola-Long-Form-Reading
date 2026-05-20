@@ -3,19 +3,22 @@ import { redirect } from 'next/navigation';
 
 import { ArticleCard } from '@/components/article-card';
 import { getUser } from '@/lib/auth';
+import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
-import type { ActivityItem } from '@/lib/api-types';
+import type { ActivityItem, ArticleSummary } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
 type ProfileMe = { username: string | null; onboarded_at: string | null };
 
-async function getActivityFeed(): Promise<ActivityItem[]> {
+async function safeFetch<T>(
+  path: string,
+  query: Record<string, string> | undefined,
+  fallback: T,
+): Promise<T> {
   try {
-    return await getServerApiClient().request<ActivityItem[]>('/api/me/feed/activity', {
-      query: { limit: '12' },
-    });
+    return await getServerApiClient().request<T>(path, query ? { query } : undefined);
   } catch (err) {
-    if (err instanceof ApiError) return [];
+    if (err instanceof ApiError) return fallback;
     throw err;
   }
 }
@@ -33,23 +36,9 @@ function relTime(iso: string): string {
 export default async function HomePage() {
   const user = await getUser();
 
-  let activity: ActivityItem[] = [];
-  if (user) {
-    let profile: ProfileMe | null = null;
-    try {
-      profile = await getServerApiClient().request<ProfileMe>('/api/users/me');
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-    }
-    if (profile && !profile.onboarded_at) {
-      redirect('/onboarding');
-    }
-    activity = await getActivityFeed();
-  }
-
-  return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      {!user && (
+  if (!user) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-12">
         <section className="max-w-3xl">
           <h1 className="text-4xl font-semibold tracking-tight">
             Discover long-form essays worth your time.
@@ -72,51 +61,93 @@ export default async function HomePage() {
               Sign in
             </Link>
           </div>
-          <p className="mt-12 text-sm text-[hsl(var(--muted-foreground))]">
-            Personalized recommendations land in Phase 7. For now, the library is curated by hand.
-          </p>
         </section>
-      )}
+      </main>
+    );
+  }
 
-      {user && (
-        <>
-          <header className="flex items-end justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">From people you follow</h1>
-              <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                Recent saves and list additions from your social graph.
-              </p>
-            </div>
-            <Link
-              href="/browse"
-              className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:border-[hsl(var(--foreground))]"
-            >
-              Browse all
-            </Link>
-          </header>
+  // Signed in: gate onboarding, then fetch feed + activity in parallel.
+  const profile = await safeFetch<ProfileMe | null>(
+    '/api/users/me',
+    undefined,
+    null,
+  );
+  if (profile && !profile.onboarded_at) {
+    redirect('/onboarding');
+  }
 
-          {activity.length === 0 ? (
-            <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-              Nothing here yet. Follow some users from their profiles, and their recent saves will
-              show up here.
-            </div>
-          ) : (
-            <div className="mt-6 columns-1 gap-4 sm:columns-2 lg:columns-3">
-              {activity.map((item) => (
-                <div key={item.event_id} className="mb-4 break-inside-avoid">
-                  <div className="px-1 pb-2 text-xs text-[hsl(var(--muted-foreground))]">
-                    <Link href={`/u/${item.actor.username}`} className="hover:underline">
-                      @{item.actor.username}
-                    </Link>{' '}
-                    {item.event_type === 'LIST_ADD' ? 'added' : 'saved'} · {relTime(item.created_at)}
-                  </div>
-                  <ArticleCard article={item.article} />
+  const [forYou, activity, savedIds] = await Promise.all([
+    safeFetch<ArticleSummary[]>('/api/feed', { limit: '12' }, []),
+    safeFetch<ActivityItem[]>('/api/me/feed/activity', { limit: '12' }, []),
+    getSavedArticleIds(),
+  ]);
+  const savedSet = new Set(savedIds);
+
+  return (
+    <main className="mx-auto max-w-5xl px-6 py-12">
+      <section>
+        <header className="flex items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">For you</h1>
+            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+              Scored on your saves, finishes, and topic picks.
+            </p>
+          </div>
+          <Link
+            href="/browse"
+            className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:border-[hsl(var(--foreground))]"
+          >
+            Browse all
+          </Link>
+        </header>
+        {forYou.length === 0 ? (
+          <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+            Save a few articles to seed the feed. Or pick more topic interests from
+            {' '}
+            <Link href="/onboarding" className="underline">onboarding</Link>.
+          </div>
+        ) : (
+          <div className="mt-6 columns-1 gap-4 sm:columns-2 lg:columns-3">
+            {forYou.map((a) => (
+              <ArticleCard
+                key={a.id}
+                article={a}
+                showSave
+                initiallySaved={savedSet.has(a.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-16">
+        <header>
+          <h2 className="text-xl font-semibold tracking-tight">From people you follow</h2>
+          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+            Recent saves and list additions from your social graph.
+          </p>
+        </header>
+        {activity.length === 0 ? (
+          <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+            Nothing here yet. Follow some users from their profiles, and their recent saves will
+            show up here.
+          </div>
+        ) : (
+          <div className="mt-6 columns-1 gap-4 sm:columns-2 lg:columns-3">
+            {activity.map((item) => (
+              <div key={item.event_id} className="mb-4 break-inside-avoid">
+                <div className="px-1 pb-2 text-xs text-[hsl(var(--muted-foreground))]">
+                  <Link href={`/u/${item.actor.username}`} className="hover:underline">
+                    @{item.actor.username}
+                  </Link>{' '}
+                  {item.event_type === 'LIST_ADD' ? 'added' : 'saved'} · {relTime(item.created_at)}
                 </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                <ArticleCard article={item.article} />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

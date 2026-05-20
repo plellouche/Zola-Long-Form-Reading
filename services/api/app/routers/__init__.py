@@ -1,4 +1,16 @@
-from . import articles, events, ingest, lists, me_articles, search, social, sources, topics, users
+from . import (
+    articles,
+    events,
+    ingest,
+    lists,
+    me_articles,
+    recs,
+    search,
+    social,
+    sources,
+    topics,
+    users,
+)
 
 __all__ = [
     "articles",
@@ -6,6 +18,7 @@ __all__ = [
     "ingest",
     "lists",
     "me_articles",
+    "recs",
     "search",
     "social",
     "sources",

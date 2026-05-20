@@ -3,10 +3,12 @@ import { notFound } from 'next/navigation';
 
 import { ReadArticleButton } from './read-button';
 import { AddToList } from '@/components/add-to-list';
+import { ArticleCard } from '@/components/article-card';
 import { ArticleStateControls } from '@/components/article-state-controls';
 import { getUser } from '@/lib/auth';
+import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
-import type { UserArticleState, UserArticleStatus } from '@/lib/api-types';
+import type { ArticleSummary, UserArticleState, UserArticleStatus } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
 type Source = { id: string; slug: string; name: string };
@@ -60,10 +62,18 @@ export default async function ArticlePage({
     throw err;
   }
 
-  const [allTopics, myStatus] = await Promise.all([
+  const [allTopics, myStatus, related, savedIds] = await Promise.all([
     api.request<Topic[]>('/api/topics'),
     user ? getMyStateForArticle(id) : Promise.resolve(null),
+    api
+      .request<ArticleSummary[]>(`/api/articles/${id}/related`, { query: { limit: '6' } })
+      .catch((err) => {
+        if (err instanceof ApiError) return [] as ArticleSummary[];
+        throw err;
+      }),
+    user ? getSavedArticleIds() : Promise.resolve<string[]>([]),
   ]);
+  const savedSet = new Set(savedIds);
   const topicsById = new Map(allTopics.map((t) => [t.id, t]));
   const articleTopics = article.topics
     .map((link) => topicsById.get(link.topic_id))
@@ -156,6 +166,25 @@ export default async function ArticlePage({
             </Link>
           ))}
         </div>
+      )}
+
+      {related.length > 0 && (
+        <section className="mt-16">
+          <h2 className="text-lg font-semibold tracking-tight">Related</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+            Other articles with overlapping topics.
+          </p>
+          <div className="mt-4 columns-1 gap-4 sm:columns-2">
+            {related.map((a) => (
+              <ArticleCard
+                key={a.id}
+                article={a}
+                showSave={!!user}
+                initiallySaved={savedSet.has(a.id)}
+              />
+            ))}
+          </div>
+        </section>
       )}
     </main>
   );
