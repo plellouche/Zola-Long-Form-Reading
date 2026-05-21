@@ -23,6 +23,7 @@
 13. [Hosting & Deployment](#13-hosting--deployment)
 14. [Decision Log](#14-decision-log)
 15. [Scaling Roadmap](#15-scaling-roadmap)
+16. [Future Improvements](#16-future-improvements)
 
 ---
 
@@ -806,6 +807,90 @@ These look like obvious wins but trap effort or scope:
 - Max 2 concurrent fetches per host.
 - Exponential backoff on 429/5xx; mark source `is_active=false` after 5 consecutive failures (admin re-enables manually).
 - Per-run stats land in `ingestion_runs` (Phase 3 migration); dashboard reads them later.
+
+---
+
+## 16. Future Improvements
+
+Items consciously deferred during Phases 0–8 that aren't scale-triggered (those live in §15). Each entry includes why it was deferred and what triggers picking it up.
+
+### UX polish
+
+**Drag-and-drop list reorder** — current `/list/[id]` uses up/down arrow buttons per row. DnD that's accessible, touch-friendly, and survives keyboard nav is non-trivial; `dnd-kit` is the standard. Pick up when at least one user complains, or when adding multi-select.
+
+**Keyboard shortcuts** — J/K to navigate cards in feeds, S to save the focused card, G then B / G then L to jump to Browse / Lists, ? for a cheat-sheet overlay. Useful for keyboard-heavy users but low value for first invite cohort. ~1 day of focused work.
+
+**Bulk operations** — multi-select on `/lists`, the saved tab, and inside list detail. Once selected: delete N items, move N items between lists, mark N as finished. Schema doesn't need changes; API endpoints accept arrays. Wait until someone has more than ~30 saves and is annoyed.
+
+**Reading progress indicator** — visible "you're 40% through this article" badge or progress bar. Only meaningful for `FULLTEXT_ALLOWED` content (which is currently zero); skip until we have in-app rendering.
+
+**Card density toggle** — compact / comfortable / spacious modes on `/browse`. Cheap polish; can ride along with a settings page rework.
+
+### Reader
+
+**`/read/[id]` in-app reader** — for articles whose `content_policy = FULLTEXT_ALLOWED`. Currently nothing matches that policy. Requires:
+- Updating `packages/ingest` to pull the full body when allowed (and respecting source licensing)
+- A reader page with typography (Tailwind Typography plugin), scroll progress, mark-as-finished CTA, font-size control
+- A "Read in app" affordance on cards/article detail when the policy permits
+
+**Reading time auto-tracking** — client-side beacon (`navigator.sendBeacon`) on `visibilitychange` / `beforeunload` that increments `user_article_states.time_spent_seconds` for the current article. Column exists; the route handler stub doesn't. Useful once we have reader pages — for redirect-only outbound clicks the signal is noisy and we already log a `LINK_CLICK` event.
+
+### Content flow
+
+**User "Suggest an article" with moderation queue** — currently `/settings/articles/new` is admin-only. Opening it to all users requires:
+- `articles.status` column: `PENDING | PUBLISHED | REJECTED`
+- Admin queue at `/settings/articles/pending` to approve / reject; rejected entries optionally surface a note to the submitter
+- Email or in-app notification when status changes
+- Rate-limit per user (e.g. 3 submissions/day)
+
+**User-submitted source proposals** — same shape but at the source level. Lower priority; sources are stable.
+
+**Pinned / featured articles** — admin can pin a list of N articles to surface on `/` for non-personalized "editor's picks." Simple `articles.is_featured` boolean. Useful when first onboarding new users who have no saved history yet.
+
+### Admin tooling
+
+**Article quality up/downvote UI** — `articles.quality_score` is already PATCH-able via the existing API; a small ±0.05 button on `/settings/articles/pending` (or the article detail page when viewed by an admin) would make tuning ergonomic. Trivial to add once the moderation queue lands.
+
+**Source ingestion-history viewer** — render the `ingestion_runs` table as a table at `/settings/sources/{id}/runs`. Useful when a source starts failing intermittently; currently only available via direct SQL.
+
+**Admin user moderation** — soft-delete a profile, revoke admin role, suspend account. Wait until there's an actual misuse incident; YAGNI otherwise.
+
+**Per-source default-topics editor** — `source_default_topics` is currently seeded only via SQL. A UI for editing the weights helps tune ingestion-time auto-tagging without touching migrations.
+
+### Search & ranking
+
+**Multilingual search** — current `to_tsvector('english', ...)` is English-only. If we add non-English sources, this needs to either auto-detect language per article or store multiple language columns. Wait until we deliberately add a non-English source.
+
+**Saved-search alerts** — user saves a query (topic + filter combo), gets a digest email when new matching articles arrive. Email infrastructure is already there via Resend; needs a `saved_searches` table and a daily/weekly job.
+
+**Trending feed** — a "what's been saved most this week" view. Needs a denormalized weekly count on articles, plus a job to refresh it. Cheap once we have ~hundreds of users.
+
+### Performance & operations
+
+**Lighthouse audit + image optimization** — defer to actual production deployment. Image optimization means swapping `<img>` for `<Image>` (Next.js) on cards and article detail; impact is real for mobile data but invisible on localhost.
+
+**Per-route HTTP caching strategy** — `/browse` results can be cached briefly by the CDN; `/api/feed` is personalized and must not be cached. Audit cache headers when we deploy.
+
+**API response compression** — Render does this automatically; if we self-host or move to a different host, enable gzip/brotli at the proxy.
+
+**Sentry / structured error logging** — root `error.tsx` currently just `console.error`s. Real error tracking lands when there are real users.
+
+**FastAPI request logging + slow-query log** — `uvicorn --access-log` plus a SQL slow-query log feeding into Supabase's built-in metrics or an external APM. Wait until something feels slow in production.
+
+### Mobile (Phase 9)
+
+The doc's Phase 9 (Expo + React Native sharing `packages/shared` types and `packages/api-client`) lives here as a future improvement until prioritized. Stack already structured to absorb it without restructuring.
+
+### Anti-features (explicitly not doing)
+
+For clarity, here's what's been actively rejected — not just deferred:
+
+- **Full-text scraping of paywalled content.** Copyright + ToS risk.
+- **Auto-curating "what's popular elsewhere"** via Twitter/Reddit/HN scraping. Becomes a moderation nightmare; defeats the high-signal curation thesis.
+- **Real-time ingestion** (sub-hour). Longform isn't a news app; 6h polling is correct.
+- **Cross-source dedup beyond `canonical_url`.** Two outlets running the same essay is rare; fuzzy-matching isn't worth the effort until users complain.
+- **In-app commenting / threading.** Wrong app shape; we point to sources, not host discussion.
+- **Algorithmic re-ranking that hides articles entirely.** The recs engine surfaces, never hides. `DISMISSED` is user-driven.
 
 ---
 
