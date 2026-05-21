@@ -23,6 +23,7 @@ from ..models import (
     ListItem,
     ReadingList,
     Source,
+    SourceFollow,
     UserArticleState,
 )
 from .diversity import ScoredCandidate, apply_diversity
@@ -30,7 +31,36 @@ from .profile import build_user_topic_profile
 from .scorer import cosine_similarity, freshness_score, score_article
 
 CANDIDATE_POOL_DAYS = 90
+DISCOVER_POOL_DAYS = 180  # deck digs a bit deeper than the For-You feed
 MAX_CANDIDATES_TO_SCORE = 400  # cap to keep per-request CPU bounded
+SOURCE_FATIGUE_WINDOW = timedelta(days=7)
+
+
+async def _followed_source_ids(session: AsyncSession, user_id: UUID) -> set[UUID]:
+    rows = await session.execute(
+        select(SourceFollow.source_id).where(SourceFollow.user_id == user_id)
+    )
+    return {sid for (sid,) in rows.all()}
+
+
+async def _fatigued_source_ids(session: AsyncSession, user_id: UUID) -> set[UUID]:
+    """Sources the user swiped-down on within SOURCE_FATIGUE_WINDOW."""
+    cutoff = datetime.now(timezone.utc) - SOURCE_FATIGUE_WINDOW
+    rows = await session.execute(
+        select(Event.metadata)
+        .where(Event.user_id == user_id)
+        .where(Event.event_type == "SOURCE_FATIGUE")
+        .where(Event.created_at >= cutoff)
+    )
+    out: set[UUID] = set()
+    for (md,) in rows.all():
+        sid = (md or {}).get("source_id")
+        if sid:
+            try:
+                out.add(UUID(sid))
+            except (TypeError, ValueError):
+                continue
+    return out
 
 
 async def _bulk_article_topics(
@@ -94,6 +124,8 @@ async def for_you_feed(
     profile = await build_user_topic_profile(session, user_id)
     topics_map = await _bulk_article_topics(session, [a.id for a in candidates])
     social = await _social_save_counts(session, user_id, [a.id for a in candidates])
+    followed_sources = await _followed_source_ids(session, user_id)
+    fatigued_sources = await _fatigued_source_ids(session, user_id)
 
     now = datetime.now(timezone.utc)
     scored: list[ScoredCandidate[Article]] = []
@@ -106,6 +138,8 @@ async def for_you_feed(
             social_count=social.get(a.id, 0),
             reference_date=a.publication_date or a.created_at,
             now=now,
+            source_followed=a.source_id in followed_sources,
+            source_fatigued=a.source_id in fatigued_sources,
         )
         scored.append(
             ScoredCandidate(
@@ -117,6 +151,75 @@ async def for_you_feed(
             )
         )
     return apply_diversity(scored, limit)
+
+
+async def for_discover_deck(
+    session: AsyncSession, user_id: UUID, *, limit: int = 25
+) -> list[Article]:
+    """Candidate pool for the swipe deck.
+
+    Differs from for_you_feed:
+      - Bigger time window (DISCOVER_POOL_DAYS) so newcomers don't run out fast.
+      - Topic-similarity weighted higher (0.5 via score_article tweak below).
+      - Diversity loosened to max_per_source=4 — exploring a source is fine.
+      - Excludes anything the user already swiped on (any user_article_states row).
+    """
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=DISCOVER_POOL_DAYS)
+
+    excluded_subq = (
+        select(UserArticleState.article_id).where(UserArticleState.user_id == user_id)
+    ).subquery()
+
+    candidates_result = await session.execute(
+        select(Article)
+        .join(Source, Source.id == Article.source_id)
+        .where(Source.is_active.is_(True))
+        .where(Article.created_at >= cutoff)
+        .where(Article.id.not_in(select(excluded_subq.c.article_id)))
+        .order_by(Article.created_at.desc())
+        .limit(MAX_CANDIDATES_TO_SCORE)
+    )
+    candidates = list(candidates_result.scalars().unique().all())
+    if not candidates:
+        return []
+
+    profile = await build_user_topic_profile(session, user_id)
+    topics_map = await _bulk_article_topics(session, [a.id for a in candidates])
+    social = await _social_save_counts(session, user_id, [a.id for a in candidates])
+    followed_sources = await _followed_source_ids(session, user_id)
+    fatigued_sources = await _fatigued_source_ids(session, user_id)
+
+    now = datetime.now(timezone.utc)
+    scored: list[ScoredCandidate[Article]] = []
+    for a in candidates:
+        # Deck-specific scoring: lean harder on topic-sim so swipes feel
+        # responsive. Reuses the same score_article skeleton but with
+        # rebalanced weights inline.
+        sim = cosine_similarity(profile, topics_map.get(a.id, {}))
+        social_norm = min(social.get(a.id, 0) * 0.25, 1.0)
+        fresh = freshness_score(a.publication_date or a.created_at, now)
+        s = (
+            sim * 0.5
+            + social_norm * 0.15
+            + float(a.quality_score) * 0.2
+            + fresh * 0.1
+            + float(a.source.trust_score) * 0.05
+        )
+        if a.source_id in followed_sources:
+            s += 0.1
+        if a.source_id in fatigued_sources:
+            s *= 0.5
+        scored.append(
+            ScoredCandidate(
+                item=a,
+                score=s,
+                source_id=a.source_id,
+                author=a.author,
+                topic_ids=frozenset(topics_map.get(a.id, {}).keys()),
+            )
+        )
+    return apply_diversity(scored, limit, max_per_source=4)
 
 
 async def related_articles(

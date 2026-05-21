@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect } from 'react';
 
 export default function RootError({
@@ -28,12 +29,12 @@ export default function RootError({
         >
           Try again
         </button>
-        <a
+        <Link
           href="/"
           className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium"
         >
           Go home
-        </a>
+        </Link>
       </div>
       {error.digest && (
         <p className="mt-8 text-xs text-[hsl(var(--muted-foreground))]">Digest: {error.digest}</p>

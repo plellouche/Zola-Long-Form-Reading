@@ -57,7 +57,23 @@ export type Topic = {
 
 export type SourceBrief = { id: string; slug: string; name: string; is_active: boolean };
 
-export type UserArticleStatus = 'SAVED' | 'READING' | 'FINISHED' | 'DISMISSED';
+export type SourceDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  homepage_url: string;
+  rss_url: string | null;
+  content_policy: 'REDIRECT_ONLY' | 'EMBED_ALLOWED' | 'FULLTEXT_ALLOWED';
+  kind: string;
+  trust_score: number;
+  is_active: boolean;
+  article_count: number;
+  followers_count: number;
+  am_following: boolean;
+  created_at: string;
+};
+
+export type UserArticleStatus = 'SAVED' | 'READING' | 'FINISHED' | 'DISMISSED' | 'INTERESTED';
 
 export type UserArticleState = {
   article_id: string;

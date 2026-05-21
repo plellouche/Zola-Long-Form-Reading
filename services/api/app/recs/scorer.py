@@ -56,14 +56,21 @@ def score_article(
     social_count: int,
     reference_date,
     now: datetime | None = None,
+    source_followed: bool = False,
+    source_fatigued: bool = False,
 ) -> float:
     topic_sim = cosine_similarity(user_profile, article_topics)
     social_norm = min(social_count * 0.25, 1.0)  # 4+ followee saves saturates
     fresh = freshness_score(reference_date, now)
-    return (
+    base = (
         topic_sim * 0.4
         + social_norm * 0.2
         + quality * 0.2
         + fresh * 0.1
         + source_trust * 0.1
     )
+    if source_followed:
+        base += 0.1
+    if source_fatigued:
+        base *= 0.5
+    return base

@@ -130,29 +130,26 @@ export default async function ArticlePage({
         ← Browse
       </Link>
 
-      <div className="mt-6 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-        <Link href={`/browse?source=${article.source.slug}`} className="hover:underline">
+      <div className="mt-6 text-[11px] font-medium uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]">
+        <Link href={`/source/${article.source.slug}`} className="hover:text-[hsl(var(--foreground))] hover:underline">
           {article.source.name}
         </Link>
       </div>
 
-      <h1 className="mt-2 text-4xl font-semibold tracking-tight">{article.title}</h1>
+      <h1 className="mt-3 text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+        {article.title}
+      </h1>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-        {article.author && <span>{article.author}</span>}
-        {article.author && date && <span>·</span>}
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[hsl(var(--muted-foreground))]">
+        {article.author && (
+          <span className="font-medium text-[hsl(var(--foreground))]">{article.author}</span>
+        )}
         {date && <span>{date}</span>}
         {article.reading_time_minutes && (
-          <>
-            <span>·</span>
-            <span>{article.reading_time_minutes} min read</span>
-          </>
+          <span>{article.reading_time_minutes} min read</span>
         )}
         {article.save_count > 0 && (
-          <>
-            <span>·</span>
-            <span>{article.save_count} {article.save_count === 1 ? 'save' : 'saves'}</span>
-          </>
+          <span>{article.save_count} {article.save_count === 1 ? 'save' : 'saves'}</span>
         )}
       </div>
 
@@ -169,7 +166,7 @@ export default async function ArticlePage({
       )}
 
       {article.description && (
-        <p className="mt-6 text-lg leading-relaxed text-[hsl(var(--muted-foreground))]">
+        <p className="mt-6 max-w-prose text-xl leading-relaxed text-[hsl(var(--muted-foreground))]">
           {article.description}
         </p>
       )}

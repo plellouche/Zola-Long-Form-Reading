@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { ArticleCard } from '@/components/article-card';
+import { EmptyState } from '@/components/empty-state';
+import { FeaturedArticleCard } from '@/components/featured-article-card';
 import { getUser } from '@/lib/auth';
 import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
@@ -101,22 +103,33 @@ export default async function HomePage() {
           </Link>
         </header>
         {forYou.length === 0 ? (
-          <div className="mt-6 rounded-lg border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            Save a few articles to seed the feed. Or pick more topic interests from
-            {' '}
-            <Link href="/onboarding" className="underline">onboarding</Link>.
+          <div className="mt-6">
+            <EmptyState
+              title="Tell us what you like."
+              body="Swipe through Discover, or pick more topic interests from onboarding, and your feed will fill in."
+              cta={{ label: 'Open Discover', href: '/discover' }}
+            />
           </div>
         ) : (
-          <div className="mt-6 columns-1 gap-4 sm:columns-2 lg:columns-3">
-            {forYou.map((a) => (
-              <ArticleCard
-                key={a.id}
-                article={a}
+          <>
+            <div className="mt-6">
+              <FeaturedArticleCard
+                article={forYou[0]}
                 showSave
-                initiallySaved={savedSet.has(a.id)}
+                initiallySaved={savedSet.has(forYou[0].id)}
               />
-            ))}
-          </div>
+            </div>
+            <div className="mt-2 columns-1 gap-4 sm:columns-2 lg:columns-3">
+              {forYou.slice(1).map((a) => (
+                <ArticleCard
+                  key={a.id}
+                  article={a}
+                  showSave
+                  initiallySaved={savedSet.has(a.id)}
+                />
+              ))}
+            </div>
+          </>
         )}
       </section>
 

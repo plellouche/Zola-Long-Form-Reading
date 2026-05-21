@@ -16,6 +16,11 @@ Migration path documented in COMMAND_CENTER §15:
 See feed.py for the main entry points.
 """
 
-from .feed import for_you_feed, list_recommendations, related_articles
+from .feed import for_discover_deck, for_you_feed, list_recommendations, related_articles
 
-__all__ = ["for_you_feed", "list_recommendations", "related_articles"]
+__all__ = [
+    "for_discover_deck",
+    "for_you_feed",
+    "list_recommendations",
+    "related_articles",
+]

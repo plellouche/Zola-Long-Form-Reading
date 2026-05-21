@@ -4,20 +4,30 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..auth_admin import require_admin
 from ..database import get_session
-from ..models import Article, Source
-from ..schemas import SourceCreate, SourceOut, SourceUpdate
+from ..models import Article, Source, SourceFollow
+from ..schemas import SourceCreate, SourceFollowAck, SourceOut, SourceUpdate
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 
 
-def _to_out(source: Source, article_count: int) -> SourceOut:
+def _to_out(
+    source: Source,
+    article_count: int,
+    *,
+    followers_count: int = 0,
+    am_following: bool = False,
+) -> SourceOut:
     base = SourceOut.model_validate(source)
     base.article_count = article_count
+    base.followers_count = followers_count
+    base.am_following = am_following
     return base
 
 
@@ -43,12 +53,78 @@ async def list_sources(
 
 
 @router.get("/{slug}", response_model=SourceOut)
-async def get_source(slug: str, session: AsyncSession = Depends(get_session)) -> Source:
+async def get_source(
+    slug: str,
+    viewer: CurrentUser | None = Depends(get_current_user_optional),
+    session: AsyncSession = Depends(get_session),
+) -> SourceOut:
     result = await session.execute(select(Source).where(Source.slug == slug.lower()))
     source = result.scalar_one_or_none()
     if source is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
-    return source
+
+    article_count = await session.scalar(
+        select(func.count(Article.id)).where(Article.source_id == source.id)
+    )
+    followers_count = await session.scalar(
+        select(func.count()).select_from(SourceFollow).where(SourceFollow.source_id == source.id)
+    )
+    am_following = False
+    if viewer is not None:
+        am_following = bool(
+            await session.scalar(
+                select(SourceFollow).where(
+                    SourceFollow.user_id == viewer.id,
+                    SourceFollow.source_id == source.id,
+                )
+            )
+        )
+    return _to_out(
+        source,
+        int(article_count or 0),
+        followers_count=int(followers_count or 0),
+        am_following=am_following,
+    )
+
+
+@router.post("/{slug}/follow", response_model=SourceFollowAck)
+async def follow_source(
+    slug: str,
+    current: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> SourceFollowAck:
+    source = await session.scalar(select(Source).where(Source.slug == slug.lower()))
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+    stmt = (
+        pg_insert(SourceFollow)
+        .values(user_id=current.id, source_id=source.id)
+        .on_conflict_do_nothing()
+    )
+    await session.execute(stmt)
+    await session.commit()
+    return SourceFollowAck(source_id=source.id, am_following=True)
+
+
+@router.delete("/{slug}/follow", response_model=SourceFollowAck)
+async def unfollow_source(
+    slug: str,
+    current: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> SourceFollowAck:
+    source = await session.scalar(select(Source).where(Source.slug == slug.lower()))
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+    existing = await session.scalar(
+        select(SourceFollow).where(
+            SourceFollow.user_id == current.id,
+            SourceFollow.source_id == source.id,
+        )
+    )
+    if existing is not None:
+        await session.delete(existing)
+        await session.commit()
+    return SourceFollowAck(source_id=source.id, am_following=False)
 
 
 @router.post("", response_model=SourceOut, status_code=status.HTTP_201_CREATED)

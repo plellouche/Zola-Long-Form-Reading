@@ -6,6 +6,7 @@ from .content import (
     EventCreate,
     EventOut,
     SourceCreate,
+    SourceFollowAck,
     SourceOut,
     SourceUpdate,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "PublicProfile",
     "SetArticleStateRequest",
     "SourceCreate",
+    "SourceFollowAck",
     "SourceOut",
     "SourceUpdate",
     "StatefulArticle",

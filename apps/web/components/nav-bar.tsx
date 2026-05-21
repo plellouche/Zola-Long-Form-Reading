@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { Avatar } from '@/components/avatar';
 import { SearchInput } from '@/components/search-input';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getUser } from '@/lib/auth';
@@ -7,7 +8,10 @@ import { getServerApiClient } from '@/lib/server-api';
 import { ApiError } from '@longform/api-client';
 
 type ProfileMe = {
+  id: string;
   username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
   role: string;
   onboarded_at: string | null;
 };
@@ -47,6 +51,11 @@ export async function NavBar() {
           <Link href="/browse" className={linkCls}>
             Browse
           </Link>
+          {user && isOnboarded && (
+            <Link href="/discover" className={linkCls}>
+              Discover
+            </Link>
+          )}
 
           {!user && (
             <Link
@@ -73,8 +82,18 @@ export async function NavBar() {
               >
                 Saved
               </Link>
-              <Link href={`/u/${profile.username}`} className={linkCls}>
-                @{profile.username}
+              <Link
+                href={`/u/${profile.username}`}
+                className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-[hsl(var(--muted))]"
+                title={`@${profile.username}`}
+              >
+                <Avatar
+                  src={profile.avatar_url}
+                  name={profile.display_name ?? profile.username}
+                  seed={profile.id}
+                  size="sm"
+                />
+                <span className="hidden sm:inline">@{profile.username}</span>
               </Link>
               <Link href="/settings" className={`hidden sm:inline-flex ${linkCls}`}>
                 Settings

@@ -18,6 +18,7 @@ const LABELS: Record<UserArticleStatus, string> = {
   READING: 'Reading',
   FINISHED: 'Finished',
   DISMISSED: 'Dismiss',
+  INTERESTED: 'Interested',
 };
 
 export function ArticleStateControls({ articleId, initialStatus }: Props) {

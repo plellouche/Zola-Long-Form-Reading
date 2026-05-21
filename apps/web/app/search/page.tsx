@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { ArticleCard } from '@/components/article-card';
+import { EmptyState } from '@/components/empty-state';
 import { SearchInput } from '@/components/search-input';
 import { getServerApiClient } from '@/lib/server-api';
 import type { SearchResponse } from '@/lib/api-types';
@@ -32,8 +33,12 @@ export default async function SearchPage({
       </div>
 
       {!term ? null : !result || (result.articles.length === 0 && result.users.length === 0) ? (
-        <div className="mt-10 rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          No matches for <strong>{term}</strong>.
+        <div className="mt-10">
+          <EmptyState
+            title={`No matches for "${term}".`}
+            body="Try a broader query or browse by topic."
+            cta={{ label: 'Browse topics', href: '/browse' }}
+          />
         </div>
       ) : (
         <div className="mt-8 space-y-10">

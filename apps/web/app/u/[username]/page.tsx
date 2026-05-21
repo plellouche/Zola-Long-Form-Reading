@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { ArticleCard } from '@/components/article-card';
+import { Avatar } from '@/components/avatar';
+import { EmptyState } from '@/components/empty-state';
 import { FollowButton } from '@/components/follow-button';
 import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
@@ -14,12 +16,13 @@ import type {
 } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
-type Tab = 'lists' | 'saved' | 'read';
+type Tab = 'lists' | 'saved' | 'read' | 'interested';
 
 const TAB_LABELS: Record<Tab, string> = {
   lists: 'Lists',
   saved: 'Saved',
   read: 'Read',
+  interested: 'Interested',
 };
 
 export async function generateMetadata({
@@ -54,7 +57,11 @@ export default async function PublicProfilePage({
 }) {
   const { username } = await params;
   const sp = await searchParams;
-  const tab: Tab = sp.tab === 'saved' || sp.tab === 'read' ? sp.tab : 'lists';
+  const requested = sp.tab;
+  const tab: Tab =
+    requested === 'saved' || requested === 'read' || requested === 'interested'
+      ? requested
+      : 'lists';
   const api = getServerApiClient();
 
   let profile: PublicProfile;
@@ -72,6 +79,7 @@ export default async function PublicProfilePage({
   let lists: ReadingList[] = [];
   let savedItems: StatefulArticle[] = [];
   let readItems: StatefulArticle[] = [];
+  let interestedItems: StatefulArticle[] = [];
 
   if (tab === 'lists') {
     lists = await api.request<ReadingList[]>('/api/lists', {
@@ -85,6 +93,10 @@ export default async function PublicProfilePage({
     readItems = await api.request<StatefulArticle[]>('/api/me/articles', {
       query: { status: 'FINISHED' satisfies UserArticleStatus, limit: '60' },
     });
+  } else if (tab === 'interested' && isSelf) {
+    interestedItems = await api.request<StatefulArticle[]>('/api/me/articles', {
+      query: { status: 'INTERESTED' satisfies UserArticleStatus, limit: '100' },
+    });
   }
 
   return (
@@ -93,13 +105,21 @@ export default async function PublicProfilePage({
         ← Home
       </Link>
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {profile.display_name ?? `@${profile.username}`}
-          </h1>
-          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            @{profile.username}
-          </p>
+        <div className="flex items-start gap-4">
+          <Avatar
+            src={profile.avatar_url}
+            name={profile.display_name ?? profile.username}
+            seed={profile.id}
+            size="xl"
+          />
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {profile.display_name ?? `@${profile.username}`}
+            </h1>
+            <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+              @{profile.username}
+            </p>
+          </div>
         </div>
         {viewer && !isSelf && (
           <FollowButton
@@ -110,20 +130,26 @@ export default async function PublicProfilePage({
       </div>
 
       <div className="mt-3 flex gap-4 text-sm text-[hsl(var(--muted-foreground))]">
-        <span>
+        <Link
+          href={`/u/${profile.username}/followers`}
+          className="hover:text-[hsl(var(--foreground))]"
+        >
           <strong className="text-[hsl(var(--foreground))]">{profile.followers_count}</strong>{' '}
           {profile.followers_count === 1 ? 'follower' : 'followers'}
-        </span>
-        <span>
+        </Link>
+        <Link
+          href={`/u/${profile.username}/following`}
+          className="hover:text-[hsl(var(--foreground))]"
+        >
           <strong className="text-[hsl(var(--foreground))]">{profile.following_count}</strong>{' '}
           following
-        </span>
+        </Link>
       </div>
 
       {profile.bio && <p className="mt-6 max-w-2xl whitespace-pre-wrap">{profile.bio}</p>}
 
       <nav className="mt-8 flex items-center gap-1 border-b border-[hsl(var(--border))]">
-        {(['lists', 'saved', 'read'] as Tab[]).map((t) => {
+        {(['lists', 'saved', 'read', 'interested'] as Tab[]).map((t) => {
           const visible = t === 'lists' || isSelf;
           if (!visible) return null;
           const active = t === tab;
@@ -148,9 +174,11 @@ export default async function PublicProfilePage({
         {tab === 'lists' && (
           <>
             {lists.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                No public lists yet.
-              </div>
+              <EmptyState
+                title={isSelf ? "You haven't built any lists yet." : 'No public lists yet.'}
+                body={isSelf ? 'Group articles you love into shareable reading lists.' : undefined}
+                cta={isSelf ? { label: 'Create a list', href: '/lists' } : undefined}
+              />
             ) : (
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {lists.map((l) => (
@@ -181,9 +209,11 @@ export default async function PublicProfilePage({
         {tab === 'saved' && isSelf && (
           <>
             {savedItems.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                Nothing saved yet.
-              </div>
+              <EmptyState
+                title="Nothing saved yet."
+                body="Swipe up in Discover or tap save on a card to start building your queue."
+                cta={{ label: 'Discover articles', href: '/discover' }}
+              />
             ) : (
               <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
                 {savedItems.map((it) => (
@@ -202,19 +232,80 @@ export default async function PublicProfilePage({
         {tab === 'read' && isSelf && (
           <>
             {readItems.length === 0 ? (
+              <EmptyState
+                title="No reading history yet."
+                body="Mark articles as finished on the article page and they'll appear here, grouped by day."
+                cta={{ label: 'Browse all articles', href: '/browse' }}
+              />
+            ) : (
+              <ReadTimeline items={readItems} />
+            )}
+          </>
+        )}
+
+        {tab === 'interested' && isSelf && (
+          <>
+            {interestedItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm text-[hsl(var(--muted-foreground))]">
-                Nothing finished yet. Mark articles as finished on the article page to build your read history.
+                Start swiping to train your feed.{' '}
+                <Link href="/discover" className="underline">
+                  Open the deck
+                </Link>
+                .
               </div>
             ) : (
-              <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
-                {readItems.map((it) => (
-                  <ArticleCard key={it.article.id} article={it.article} />
-                ))}
-              </div>
+              <>
+                <p className="mb-4 text-xs text-[hsl(var(--muted-foreground))]">
+                  Private — only you see this. {interestedItems.length} article
+                  {interestedItems.length === 1 ? '' : 's'} marked interested.
+                </p>
+                <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
+                  {interestedItems.map((it) => (
+                    <ArticleCard key={it.article.id} article={it.article} showSave />
+                  ))}
+                </div>
+              </>
             )}
           </>
         )}
       </section>
     </main>
+  );
+}
+
+function ReadTimeline({ items }: { items: StatefulArticle[] }) {
+  const groups = new Map<string, StatefulArticle[]>();
+  for (const it of items) {
+    const ref = it.state.finished_at ?? it.state.updated_at;
+    const key = ref.slice(0, 10); // YYYY-MM-DD
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(it);
+    else groups.set(key, [it]);
+  }
+  const dayFmt = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="space-y-8">
+      {[...groups.entries()].map(([day, dayItems]) => (
+        <div key={day}>
+          <h3 className="mb-3 text-sm font-medium text-[hsl(var(--muted-foreground))]">
+            {day === today ? 'Today' : dayFmt.format(new Date(day))}
+            <span className="ml-2 text-xs">
+              {dayItems.length} article{dayItems.length === 1 ? '' : 's'}
+            </span>
+          </h3>
+          <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
+            {dayItems.map((it) => (
+              <ArticleCard key={it.article.id} article={it.article} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

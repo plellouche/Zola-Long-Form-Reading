@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .content import ArticleSummary
 
-UserArticleStatus = Literal["SAVED", "READING", "FINISHED", "DISMISSED"]
+UserArticleStatus = Literal["SAVED", "READING", "FINISHED", "DISMISSED", "INTERESTED"]
 
 
 # ---------- user_article_states ----------

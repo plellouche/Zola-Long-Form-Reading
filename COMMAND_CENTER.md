@@ -702,6 +702,20 @@ POST /api/admin/ingest/{source_id}  # trigger manual RSS pull
 
 ---
 
+### Phase 10 — Discovery Deck, Profile Depth, Polish
+
+Detailed plan: `PHASE_10_POLISH.md`. Status: shipped — see `PROGRESS.md` "Phase 10".
+
+**Goal**: a swipe surface that trains the recommender, profile depth (avatars + Instagram-style follower lists), source pages, and broad polish (empty states, featured cards, typography).
+
+**Highlights**:
+- New `INTERESTED` state on `user_article_states`; recency multiplier on profile signal so the feed responds within a deck session
+- `/discover` swipe deck (framer-motion); arrow keys + on-screen actions
+- Avatars via Supabase Storage `avatars` bucket, client-resized to 512² WebP
+- `/u/[username]/followers` and `/following` routes; profile counts now linked
+- `/source/[slug]` page; per-source follows (`source_follows` table) feed a +0.1 score boost
+- `<FeaturedArticleCard>` variant for the top of For-You; `<EmptyState>` applied across surfaces
+
 ### Phase 9 — Mobile App Foundation (Future)
 **Goal**: iOS/Android app sharing core logic with web.
 

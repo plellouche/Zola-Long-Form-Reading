@@ -36,7 +36,7 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
       )}
       <Link
         href={`/article/${article.id}`}
-        className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition hover:border-[hsl(var(--foreground))]"
+        className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md hover:border-[hsl(var(--foreground))]"
       >
         {article.og_image_url && (
           <div className="overflow-hidden bg-[hsl(var(--muted))]">

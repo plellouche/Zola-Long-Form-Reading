@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { CreateListForm } from './create-list-form';
+import { EmptyState } from '@/components/empty-state';
 import { requireUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ReadingList } from '@/lib/api-types';
@@ -61,8 +62,11 @@ export default async function MyListsPage() {
           My lists
         </h2>
         {myLists.length === 0 ? (
-          <div className="mt-3 rounded-lg border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-            No lists yet. Create one above, or add articles to a new list from any article page.
+          <div className="mt-3">
+            <EmptyState
+              title="No lists yet."
+              body="Create one above, or add articles to a new list from any article page."
+            />
           </div>
         ) : (
           <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

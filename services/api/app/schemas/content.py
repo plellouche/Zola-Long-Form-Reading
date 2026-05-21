@@ -34,7 +34,14 @@ class SourceOut(BaseModel):
     last_ingest_error: str | None = None
     consecutive_failures: int = 0
     article_count: int = 0
+    followers_count: int = 0
+    am_following: bool = False
     created_at: datetime
+
+
+class SourceFollowAck(BaseModel):
+    source_id: UUID
+    am_following: bool
 
 
 class SourceCreate(BaseModel):

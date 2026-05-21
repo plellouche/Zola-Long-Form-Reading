@@ -363,6 +363,90 @@ All Phase 0–8 work in COMMAND_CENTER §12 is either done or explicitly deferre
 
 ---
 
+## Phase 10 — Discovery deck, profile depth, polish
+
+**Status**: shipped scope below; remaining items deferred (see "Skipped")
+
+Plan: `PHASE_10_POLISH.md`.
+
+### Completed
+- [x] **Migration `008_phase10_discovery.sql`** (applied to Supabase, verified):
+  - `INTERESTED` added to `user_article_states.status` CHECK
+  - Event-type CHECK extended with `SWIPE_LEFT/RIGHT/UP/DOWN`, `SOURCE_FATIGUE`
+  - `source_follows` table (`user_id`, `source_id`, `created_at`) + RLS (public read, owner-write)
+  - `avatars` storage bucket + RLS (public read; per-user folder write/update/delete via `(storage.foldername(name))[1] = auth.uid()::text`)
+  - `recount_article_engagement` updated so `INTERESTED` rows count toward `save_count`
+- [x] **Recs reinforcement** (`services/api/app/recs/`):
+  - `STATUS_WEIGHTS["INTERESTED"] = 0.6` (positive but lighter than SAVED)
+  - Recency multiplier ×1.5 on signals updated within 7 days → For-You feed visibly responds to a deck session
+  - `score_article(source_followed=, source_fatigued=)` adds +0.1 / ×0.5
+  - `for_discover_deck(user_id, limit=25)` — 180d pool, topic-sim weighted 0.5, `max_per_source=4`
+  - `SourceFollow` SQLAlchemy model exported from `app.models`
+- [x] **Discover router** (`/api/discover/deck`, `/api/discover/swipe`):
+  - Direction → state mapping: left=DISMISSED, right=INTERESTED, up=SAVED, down=no state + `SOURCE_FATIGUE` event w/ `metadata.source_id`
+  - Idempotent upsert (last-write-wins on re-swipe)
+  - Smoke-tested: healthz 200, both discover endpoints 401 when unauth
+- [x] **Avatar upload (frontend)**:
+  - `<Avatar>` reusable component (hashed-color fallback initial, 5 sizes)
+  - `<AvatarUploader>` — file picker → client canvas resize (512×512 WebP) → Supabase Storage upload → PATCH `/api/users/me`
+  - Wired into `/settings`; nav-bar + `/u/[username]` header now show avatars
+- [x] **Follower / Following lists** (`/u/[username]/followers`, `/following`):
+  - Existing endpoints already return `am_following` per row; no backend changes
+  - Shared `<FollowList>` component (avatar + display name + @handle + bio + inline Follow button)
+  - Profile-header counts now `<Link>`s to the two routes
+- [x] **Discover deck UI** (`/discover`):
+  - `framer-motion` added (`^12.39.0`)
+  - Card stack: top card draggable; 2 back cards scaled + offset
+  - Direction labels (Interested / Dismiss / Save) fade in as the card is dragged toward the threshold
+  - Action buttons mirror gestures; arrow keys also bound (← → ↑ ↓)
+  - "You're caught up" finished-state with "Load more" CTA
+  - Counts strip + per-session deck progress
+  - `Discover` link added to NavBar for onboarded users
+- [x] **Profile depth**:
+  - Avatar in `/u/[username]` header alongside display name
+  - Follower / following counts are now links (above)
+  - New private `Interested` tab on `/u/me` listing INTERESTED state items with Save / Add affordances inherited from `ArticleCard`
+  - `Read` tab rebuilt as a day-grouped timeline (date headers + per-day count badges)
+- [x] **Source detail page** (`/source/[slug]`):
+  - `SourceOut` extended with `followers_count`, `am_following`
+  - `POST /api/sources/{slug}/follow` + `DELETE /api/sources/{slug}/follow`
+  - `<FollowSourceButton>` client component
+  - Page renders header (name, homepage host link, counts, follow button) + recent articles grid
+  - Article-detail source name now links to `/source/[slug]` (was `/browse?source=...`)
+- [x] **Polish wins**:
+  - `<EmptyState>` component (icon + title + body + CTA)
+  - Applied across `/u/[username]` tabs (lists / saved / read / interested), `/lists`, `/search` zero-results, and home For-You cold start
+- [x] **UI polishes**:
+  - Article cards: `motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md` lift on hover
+  - `<FeaturedArticleCard>` variant — full-bleed OG image, gradient overlay, white type; used at the top of For-You on `/`
+  - `/article/[id]` typography pass: tighter tracking, `text-5xl` title on `sm`, small-caps source line, `max-w-prose` lead paragraph, single-row metadata line
+  - Bug fix: `app/error.tsx` was using `<a href="/">` — replaced with `<Link>` so `pnpm build` lints clean
+
+### Skipped (with reasoning)
+- **Bulk operations on `/list/[id]`** — per the plan's own caveat ("wait until someone has more than ~30 saves"). Schema already supports it; UI lift not justified yet.
+- **Global keyboard shortcuts (J/K, G+B/L/D/H, ?)** — the deck has its own arrow-key handling, which covers the highest-value case. Cross-app J/K navigation is a non-trivial focus-management exercise; defer until requested.
+- **Card density toggle** — wide reach (every card-rendering surface needs to consume a `DensityContext`). Defer until anyone asks.
+- **Onboarding topic tiles with icons** — current text checklist works; icon mapping per topic slug is bespoke design work without strong signal it's needed.
+- **Nav-bar avatar dropdown** — current avatar links straight to the profile and Sign-out / Settings live in the nav for now; dropdown is purely ergonomic.
+- **Modal variant for follow lists on desktop** — routes work fine, are shareable, and the modal is duplicate code for marginal UX gain.
+
+### Notable Phase 10 decisions
+- **`INTERESTED` as a new state, not a tag.** Reusing `SAVED` would have flooded the Saved tab with every swipe-right; reusing an event-only signal would have skipped the per-article exclusion that prevents the deck from re-showing already-swiped cards. New state lets us both (a) build a feedback profile and (b) hide them from the deck on subsequent loads.
+- **Source-fatigue lives as an `events` row, not a `source_fatigues` table.** Cheaper to write, naturally expires when we filter the read query by `created_at >= now() - 7 days`, and uses infrastructure that already exists.
+- **Avatar uploads go client-direct to Supabase Storage** (with per-user RLS folder gates), not through FastAPI. Saves a hop and avoids touching the API for blob handling.
+- **Client-side canvas resize** before upload — keeps stored avatars small (~30–80KB WebP at 512²) without an image-processing service.
+- **Deck scores topic-sim higher (0.5)** than For-You (0.4). The deck is the place to surface things the user might love but freshness/social/quality should weight less; this makes swipes feel decisive.
+- **`for_discover_deck` uses a 180d candidate pool** vs. For-You's 90d. New users would run out fast at 90d, and deck-mode is the right place to mine the back catalogue.
+- **`source_follows` boost is +0.1 added (not multiplicative)** — small enough to be a tiebreaker, not a hammer. Quality + topic_sim still dominate the ranking.
+
+### Surfaces verified
+- `pnpm typecheck` clean across all changes
+- `pnpm build` clean; all new routes present: `/discover`, `/source/[slug]`, `/u/[username]/followers`, `/u/[username]/following`
+- API smoke: discover endpoints 401 when unauth; routes registered in `app.main.app.routes`
+- Migration verified via `psql`: CHECK constraints contain `INTERESTED` + swipe event types; `source_follows` table + indexes + RLS policies present; `avatars` bucket created
+
+---
+
 ## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---

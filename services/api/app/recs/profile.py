@@ -12,6 +12,7 @@ topics first when multiplied by themselves elsewhere).
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,7 +25,14 @@ STATUS_WEIGHTS = {
     "READING": 1.5,
     "FINISHED": 2.0,
     "DISMISSED": -1.5,  # pulls profile away from this topic
+    "INTERESTED": 0.6,  # lightweight positive signal from the discovery deck
 }
+
+# Recent signals weigh more so the For-You feed visibly shifts after a deck
+# session. Anything updated within RECENT_WINDOW gets multiplied by
+# RECENT_MULTIPLIER before being added into the profile.
+RECENT_WINDOW = timedelta(days=7)
+RECENT_MULTIPLIER = 1.5
 
 
 async def build_user_topic_profile(session: AsyncSession, user_id: UUID) -> dict[UUID, float]:
@@ -40,20 +48,35 @@ async def build_user_topic_profile(session: AsyncSession, user_id: UUID) -> dict
     for tid, w in explicit_rows.all():
         profile[tid] = profile.get(tid, 0.0) + float(w)
 
-    # ---- implicit signal from saved/finished/dismissed articles ----
+    # ---- implicit signal from saved/finished/dismissed/interested articles ----
     states_rows = await session.execute(
-        select(UserArticleState.article_id, UserArticleState.status)
-        .where(UserArticleState.user_id == user_id)
+        select(
+            UserArticleState.article_id,
+            UserArticleState.status,
+            UserArticleState.updated_at,
+        ).where(UserArticleState.user_id == user_id)
     )
-    states_by_article = {aid: status for aid, status in states_rows.all()}
+    states_by_article: dict[UUID, tuple[str, datetime]] = {
+        aid: (status, updated_at) for aid, status, updated_at in states_rows.all()
+    }
 
     if states_by_article:
+        now = datetime.now(timezone.utc)
         topics_rows = await session.execute(
             select(ArticleTopic.article_id, ArticleTopic.topic_id, ArticleTopic.weight)
             .where(ArticleTopic.article_id.in_(states_by_article.keys()))
         )
         for art_id, top_id, w in topics_rows.all():
-            mult = STATUS_WEIGHTS.get(states_by_article[art_id], 0.0)
+            status, updated_at = states_by_article[art_id]
+            mult = STATUS_WEIGHTS.get(status, 0.0)
+            # Recency boost: signals within the last week weigh more, so the
+            # feed responds quickly to a discovery-deck session.
+            if updated_at is not None:
+                ts = updated_at
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if now - ts <= RECENT_WINDOW:
+                    mult *= RECENT_MULTIPLIER
             profile[top_id] = profile.get(top_id, 0.0) + float(w) * mult
 
     # ---- clip negatives + normalize to max ----
