@@ -64,12 +64,20 @@ export default async function AdminSourcesPage() {
             {sources.length} sources · {totalArticles} articles total
           </p>
         </div>
-        <Link
-          href="/settings/articles/new"
-          className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm text-[hsl(var(--background))]"
-        >
-          + New article
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/settings/invites"
+            className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:border-[hsl(var(--foreground))]"
+          >
+            Invites
+          </Link>
+          <Link
+            href="/settings/articles/new"
+            className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm text-[hsl(var(--background))]"
+          >
+            + New article
+          </Link>
+        </div>
       </div>
 
       <div className="mt-6 overflow-x-auto rounded-lg border border-[hsl(var(--border))]">

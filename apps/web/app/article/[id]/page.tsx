@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import type { Metadata } from 'next';
+
 import { ReadArticleButton } from './read-button';
 import { AddToList } from '@/components/add-to-list';
 import { ArticleCard } from '@/components/article-card';
@@ -32,6 +34,41 @@ type ArticleDetail = {
   finish_count: number;
   topics: ArticleTopicLink[];
 };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    const article = await getServerApiClient().request<{
+      title: string;
+      description: string | null;
+      og_image_url: string | null;
+      author: string | null;
+      source: { name: string };
+    }>(`/api/articles/${id}`);
+    return {
+      title: article.title,
+      description: article.description ?? `An article from ${article.source.name}.`,
+      openGraph: {
+        title: article.title,
+        description: article.description ?? '',
+        type: 'article',
+        images: article.og_image_url ? [{ url: article.og_image_url }] : undefined,
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: article.title,
+        description: article.description ?? '',
+        images: article.og_image_url ? [article.og_image_url] : undefined,
+      },
+    };
+  } catch {
+    return { title: 'Article' };
+  }
+}
 
 async function getMyStateForArticle(id: string): Promise<UserArticleStatus | null> {
   try {

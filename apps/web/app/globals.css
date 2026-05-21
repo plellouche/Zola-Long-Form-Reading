@@ -2,7 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* next-themes adds `class="light"` or `class="dark"` to <html>. We define both
+ * variants and let the theme class win over the media-query fallback. The
+ * media query stays so SSR (where the class isn't set yet) doesn't flash the
+ * wrong palette on first paint. */
+
+:root,
+.light {
   --background: 0 0% 100%;
   --foreground: 0 0% 9%;
   --muted: 0 0% 96%;
@@ -10,8 +16,16 @@
   --border: 0 0% 90%;
 }
 
+.dark {
+  --background: 0 0% 9%;
+  --foreground: 0 0% 98%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 64%;
+  --border: 0 0% 20%;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --background: 0 0% 9%;
     --foreground: 0 0% 98%;
     --muted: 0 0% 14%;

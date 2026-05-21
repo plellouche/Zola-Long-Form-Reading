@@ -311,9 +311,59 @@ python -m longform_ingest --url https://...       # OG fetch only, no DB write
 
 ---
 
-## Phase 8+ — Not Started
+## Phase 8 — Polish + Invite
 
-See `COMMAND_CENTER.md` §12 for scope (Polish + Invite).
+**Status**: shipped scope below; remaining doc items deferred (see "Skipped")
+
+### Completed
+- [x] Dark mode toggle via `next-themes`. Class-based (`class="dark"` on `<html>`); old `prefers-color-scheme` media query kept as a fallback so SSR doesn't flash light on system-dark. `<ThemeProvider>` in root layout, `<ThemeToggle>` in NavBar (sun/moon icon, defaults to system, mounted-guard avoids hydration mismatch).
+- [x] SEO / OpenGraph metadata via `generateMetadata` on:
+  - `/article/[id]` — title, description, og:image from the article's `og_image_url`, type=article, twitter summary_large_image
+  - `/list/[id]` — title, description, item count; **private lists** emit `robots: { index: false }`
+  - `/topics/[slug]` — topic name + description
+  - `/u/[username]` — display_name + bio, type=profile
+  - Root layout — site-level defaults + Twitter card
+- [x] `loading.tsx` skeleton fallbacks for `/browse`, `/topics/[slug]`, `/search`, `/article/[id]`, `/list/[id]`; reusable `<CardSkeleton>` / `<CardGridSkeleton>` / `<LineSkeleton>` in `components/skeletons.tsx`
+- [x] Root `error.tsx` with retry + "go home" actions and digest display
+- [x] Root `not-found.tsx` for any `notFound()` from the app
+- [x] Mobile-responsive sweep:
+  - NavBar: `flex-wrap`, padded compact (`px-4 py-3` on mobile, `sm:px-6 sm:py-4`)
+  - Search input already `hidden md:block`; secondary nav links (Lists, Saved, Settings, Sign out, Admin) hidden on `<sm`; primary actions (Browse, @username, Sign in) always visible
+  - Theme toggle always visible
+- [x] Admin invite-by-email:
+  - `POST /api/admin/invites { email }` — admin-only, hits Supabase admin `/auth/v1/invite` with the service-role key, deliveries Resend email
+  - 409 surfaced separately when email already exists
+  - `/settings/invites` admin page with form; "Invites" link added next to "New article" on `/settings/sources`
+- [x] `pydantic[email]` + `email-validator` added to API requirements
+
+### Skipped (with reasoning)
+- **Reading progress indicator** — REDIRECT_ONLY content means we don't render full text in-app, so there's nothing to progress through.
+- **Article-quality up/downvote admin UI** — `articles.quality_score` is already PATCH-able via `/api/articles` (admin); a dedicated UI is busywork until you actually want to tune.
+- **Keyboard shortcuts (J/K, S)** — low value vs. effort. Can add as a small follow-up if you want.
+- **"Suggest an article" for non-admin users** — admin already has the form; opening to all users requires a moderation queue, which is a phase of its own.
+- **Lighthouse perf audit** — defer to actual production deployment; meaningless on `localhost` dev.
+
+### Notable Phase 8 decisions
+- **`<html suppressHydrationWarning>`** in the root layout — `next-themes` sets the class attribute client-side before React hydrates, which would normally throw a hydration mismatch warning. The directive is the documented escape hatch.
+- **Class-based theme with media-query fallback.** Pure class-based forces a JS-rendered `<html class>` before paint; combining with the media query gives a sane SSR fallback for users who haven't toggled.
+- **`pydantic[email]` instead of a hand-rolled regex.** One extra dep (`email-validator`), much better error messages and unicode/IDN handling than anything I'd write.
+- **Admin invites are server-side only.** UI gates via `requireAdmin`; API gates via `require_admin` dependency. Service-role key never crosses to the browser.
+
+### Surfaces verified
+- API: `POST /api/admin/invites` → 401 unauth; `OG meta` rendered on `/article/{id}` with real article title + description
+- Web: `/`, `/browse` → 200; `/lists`, `/settings/sources`, `/settings/invites` → 307 to login when anon
+- Loading skeletons render briefly during slow fetches (Next dev throttling can simulate)
+
+### What "shipped" means now
+All Phase 0–8 work in COMMAND_CENTER §12 is either done or explicitly deferred. The app is ready to invite a small group:
+1. Deploy `apps/web` to Vercel and `services/api` to Render (env vars in `.env.example`)
+2. Point `NEXT_PUBLIC_API_URL` at the deployed Render URL
+3. Update Supabase Site URL + Redirect URLs to include the production domain
+4. Admin signs in, visits `/settings/invites`, sends emails
+
+---
+
+## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -9,6 +10,28 @@ import type { ArticleListResponse, Topic } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
 const PAGE_LIMIT = 24;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  try {
+    const topic = await getServerApiClient().request<{ name: string; description: string | null }>(
+      `/api/topics/${slug}`,
+    );
+    const desc =
+      topic.description ?? `Articles tagged ${topic.name} from across the Longform library.`;
+    return {
+      title: topic.name,
+      description: desc,
+      openGraph: { title: topic.name, description: desc, type: 'website' },
+    };
+  } catch {
+    return { title: 'Topic' };
+  }
+}
 
 export default async function TopicPage({
   params,

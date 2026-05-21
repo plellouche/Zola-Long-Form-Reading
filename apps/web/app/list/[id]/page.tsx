@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -10,6 +11,32 @@ import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ArticleSummary, ReadingListDetail } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    const list = await getServerApiClient().request<{
+      title: string;
+      description: string | null;
+      item_count: number;
+      is_public: boolean;
+    }>(`/api/lists/${id}`);
+    if (!list.is_public) return { title: list.title, robots: { index: false } };
+    const desc =
+      list.description ?? `A reading list of ${list.item_count} article${list.item_count === 1 ? '' : 's'}.`;
+    return {
+      title: list.title,
+      description: desc,
+      openGraph: { title: list.title, description: desc, type: 'website' },
+    };
+  } catch {
+    return { title: 'Reading list' };
+  }
+}
 
 export default async function ListDetailPage({
   params,

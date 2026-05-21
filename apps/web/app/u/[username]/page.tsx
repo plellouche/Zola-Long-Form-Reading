@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -20,6 +21,29 @@ const TAB_LABELS: Record<Tab, string> = {
   saved: 'Saved',
   read: 'Read',
 };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  try {
+    const profile = await getServerApiClient().request<{
+      username: string;
+      display_name: string | null;
+      bio: string | null;
+    }>(`/api/users/${username}`);
+    const displayName = profile.display_name ?? `@${profile.username}`;
+    return {
+      title: displayName,
+      description: profile.bio ?? `${displayName}'s public lists and reading on Longform.`,
+      openGraph: { title: displayName, description: profile.bio ?? '', type: 'profile' },
+    };
+  } catch {
+    return { title: 'Profile' };
+  }
+}
 
 export default async function PublicProfilePage({
   params,
