@@ -254,6 +254,126 @@ Documented in `COMMAND_CENTER.md §15` already. Brief recap with monitoring focu
 
 ---
 
+## Phase 18 — Search & Recommender Improvements
+
+**Goal**: Move beyond keyword tagging + sparse-dict cosine to a recommender that actually understands what an article is about, and a search that handles synonyms and conceptual queries — not just exact text matches.
+
+**Why now (medium-term)**: The current stack does ~80% of the work for ~5% of the effort. Once we have ~50k articles and real engagement signal, the ceiling becomes painfully visible: a user who saves five climbing essays still gets generic "popular" articles surfaced, and a search for "epistemology of science" misses every article that talks about *how we know* without using that exact phrase. The schema was designed from day one to absorb these upgrades without restructuring (`articles.search_tsv`, `article_topics.weight`, `events`).
+
+### Two parallel tracks
+
+#### A. Recommender quality
+
+**Sentence embeddings instead of keyword topic vectors.**
+- Move `packages/recs/profile.py` from `{topic_id: weight}` dicts to dense vectors. One embedding per article (computed at ingest time, stored in a new `articles.embedding pgvector(384)` column).
+- Use a small, locally-runnable model: `sentence-transformers/all-MiniLM-L6-v2` (384-dim, ~80MB, runs on CPU in <50ms per article). Avoid OpenAI/Anthropic embeddings until the cost matters.
+- Migration: `pgvector` extension on Supabase, `alter table articles add column embedding vector(384)`, backfill job in `packages/ingest`.
+- HNSW index when article count > ~10k: `create index on articles using hnsw (embedding vector_cosine_ops)`.
+- User profile becomes the centroid of their saved/finished article embeddings (with the same status weights as today).
+- `for_you_feed`, `for_discover_deck`, `related_articles` swap cosine-similarity-over-topic-dicts for cosine-similarity-over-embeddings. The function signatures stay the same; only the math changes.
+
+**Hybrid ranking** (keyword + embedding + behavioral).
+- Keyword topic match still adds a small bonus (matches user intent when they pick a topic explicitly).
+- Embedding similarity is the workhorse.
+- Behavioral signals (save_count, finish_count, social_count) layer on as today.
+- Re-tune the weights empirically once we have engagement data — currently they're hand-picked.
+
+**Cold-start improvements**.
+- New users: weight onboarding topic picks more heavily until they have ≥5 saves; gradually phase in implicit signal.
+- New articles (no save_count yet): apply a freshness boost + source_trust prior. Already partially done.
+
+**Per-user score precomputation** at scale.
+- At ~1k users + ~10k articles, scoring on every `/api/feed` request becomes expensive. Add a `feed_cache` table (user_id, article_id, score, refreshed_at) refreshed nightly by a job. The route reads from cache and only falls back to live scoring on miss.
+
+#### B. Search quality
+
+**Synonym expansion + conceptual search**.
+- Current `/api/search` uses Postgres `websearch_to_tsquery('english', ...)` with `to_tsvector('english', ...)`. Good for stemming ("climbed" → "climb"), bad for synonyms.
+- Layer in **embedding search**: convert the query to an embedding, find the 50 nearest articles by cosine, then re-rank with the keyword score. "epistemology of science" finds Aeon essays on "how we know" without either term explicitly matching.
+- Falls out naturally from track A — same embedding column, same model.
+
+**Result diversity in search**.
+- Apply the same `apply_diversity` logic the recs use: max N per source, prefer covering multiple topics. Stops a single source from dominating common queries.
+
+**Filters that actually compose**.
+- Today's `/api/articles` accepts source + topic + reading-time + date filters but the UI exposes them inconsistently. Audit the chip-style filter UI on `/browse`; make filter state shareable via URL (already partially true via query params).
+
+**Search suggestions / autocomplete**.
+- Pre-compute the top 500 query terms (from `events` table once we log search queries — currently we don't). Surface as autocomplete in the nav search input.
+- Requires: log search queries (new event type `SEARCH`), a rollup job, and a small `/api/search/suggest?q=...` endpoint.
+
+**Saved searches** (queued already in COMMAND_CENTER §16, lands cleanly here).
+- A `saved_searches` table; daily/weekly digest email when new matches arrive. Resend is already wired.
+
+### Evaluation
+
+The hard problem is knowing whether changes actually help. Set up a simple A/B harness:
+- `experiments` table: user_id, experiment_name, variant, assigned_at.
+- Recs and search code paths check the experiment and branch.
+- Compare engagement (save rate, deck completion, follow-through to source) between variants over 2 weeks.
+- Start simple: just compare "current" vs "embeddings". Don't build a full feature-flag platform — it's premature.
+
+### Dependencies
+- Phase 12 (production) — embeddings need to run on the production ingest infra, not just locally.
+- Phase 17 (light observability) — need engagement metrics to know if changes help.
+- Article volume ≥ ~5k for embedding search to feel different from keyword search. Below that, both work equivalently well.
+
+### Trigger to start
+- Article count ≥ 5k AND ≥ 50 active users complaining that the feed feels repetitive or that search misses obvious things. Or sooner if you want a portfolio-worthy ML lift.
+
+**Estimate**: 1 week for the embedding pipeline + recs swap; 1 week for the search upgrade + autocomplete; 1 week for A/B harness + tuning. ~3 weeks end-to-end.
+
+---
+
+## Continuous Track — Source Acquisition
+
+**Not a phase, an ongoing program.** Curation quality is what makes Longform feel different from a generic aggregator. New sources should be added continuously, not in big-bang batches.
+
+### Why it matters more than other "growth" levers
+The product's value proposition is "high-signal long-form reading." With 11 seed sources, breadth is limited — a user interested in climate has Latitude Media and that's mostly it. Adding the right 30–50 sources transforms For-You and Discover from "interesting but narrow" to "I keep finding things I'd never have seen."
+
+### Operating model
+- **Target cadence**: 1–3 new sources per month, every month. Not 30 at once.
+- **Quality bar over completeness**. A "longform-only" filter is the brand promise. No daily-news outlets, no Twitter aggregators, no clickbait. Articles should average ≥ 1,500 words and ≥ 10-minute reads.
+- **Diversity of perspective and topic**. Audit the source list quarterly for blind spots: where are the literary sources? The science-writing sources? The voices outside the US/UK?
+- **Owner accountability**: someone (initially you) reviews each candidate against a written rubric. Don't outsource curation to "popularity" — that's how every aggregator becomes the same aggregator.
+
+### Source rubric (vet against this before adding)
+1. **Format**: long-form essays / reported features / criticism (not news bulletins, not link-blog roundups).
+2. **Cadence**: publishes ≥ 1 piece per week on average. Quieter is fine; dead is not.
+3. **Editorial independence**: identifiable masthead, named editors, accountable publishing model.
+4. **Copyright posture**: RSS feed present and unrestricted; canonical URLs stable; OG metadata clean. Set `content_policy = REDIRECT_ONLY` unless they grant explicit permission for in-app reading (see Phase 15).
+5. **Voice / point of view**: brings something distinctive. Five sources that all sound like *The Atlantic* is one source.
+6. **Topic coverage**: fills a gap in the current 12 topics. Use the per-source default-topics feature (`source_default_topics`) to bias new articles toward where the source actually publishes.
+7. **No ethical concerns**: not state-funded propaganda, not a content farm, not a known SEO-spam outlet.
+
+### Candidate pipeline (suggestions to evaluate)
+A working list — not committed. Each needs the rubric check.
+
+- **Essays / criticism**: The Point, n+1, The Baffler, Cabinet, The Yale Review, The Hedgehog Review, The Drift, The Dial, Lapham's Quarterly, Notre Dame Magazine.
+- **Long-form journalism**: The Atavist, Texas Monthly Long Reads, ProPublica Long Reads, GQ features, California Sunday, Atlas Obscura long-form.
+- **Science writing**: Quanta Magazine, Undark, Hakai Magazine, Knowable Magazine, Asimov Press, Inference Review.
+- **Travel / adventure**: The Wayward Daughter, Outside long-form, Patagonia Stories, Roads & Kingdoms, Atlas Obscura.
+- **Technology / culture**: Increment (archives), Stratechery (paid — likely declined), The New Atlantis, Real Life Magazine (now-defunct but archive is good), Garbage Day, Anil Dash's blog.
+- **History / arts**: Public Domain Review, JSTOR Daily, Smithsonian Magazine long-form, History Today, Cabinet Magazine.
+- **International voices**: Granta, Caravan Magazine (India), The Markaz Review (Middle East), The Continent (Africa), Mekong Review, Eurozine.
+
+### Tooling support already in place
+- Admin form at `/settings/articles/new` (manual article submission).
+- Source list at `/settings/sources` with create form.
+- `source_default_topics` table for biasing ingestion-time tagging.
+- Ingestion runner picks up new sources automatically once `is_active = true`.
+
+### Tooling to add (low priority)
+- **Source-suggestion form for users** (queued in COMMAND_CENTER §16). Currently admin-only. Opening it requires a moderation queue, but it's the most direct way to discover sources you'd never find yourself.
+- **Source ingest-history viewer** (queued in §16). Useful for noticing when a source breaks or goes quiet.
+
+### Trigger / cadence
+- Continuous, but specifically schedule a **source-acquisition pass quarterly**: 1 day of dedicated time to review the candidate list, vet 3–5 against the rubric, ingest 1–3.
+- Also revisit whenever a user complains the feed feels narrow.
+
+---
+
 ## Sequencing recommendation
 
 If you ship this in order, the dependency graph is clean:
@@ -266,15 +386,18 @@ Phase 11 (auth)  ─┬─→  Phase 12 (deploy)  ─┬─→  Phase 13 (landin
                   └────────────────────────→  Phase 15 (inline articles, legal-gated)  ─→  Phase 16 (mobile)
                                                                                           │
                                                                                           └─→  Phase 17 (full observability at scale)
+                                                                                          │
+                                                                                          └─→  Phase 18 (embeddings + smarter search)
+
+Continuous Track ─→  Source acquisition (quarterly, runs in parallel to everything)
 ```
 
-The minimal path to "publicly invitable" is **11 → 12 → 13**. Everything else is upside on top.
+The minimal path to "publicly invitable" is **11 → 12 → 13**. Everything else is upside on top. The source-acquisition track runs in parallel through all of it — adding 1–3 high-quality sources per month is the simplest, highest-leverage way to make every other phase land better.
 
 ---
 
 ## What's NOT in this roadmap (and why)
 
-- **Recommender ML upgrades** (embeddings, pgvector, ANN): already documented in COMMAND_CENTER §15, gated on article-count thresholds.
 - **Monetization** (paid tier, ads, affiliate): deliberately deferred until product-market fit signal exists. Free invite-only stays the model through Phase 13.
 - **Federation / ActivityPub**: cool idea, wrong app shape. We point to sources, not host content.
 - **Cross-source dedup**: see COMMAND_CENTER §16 — too rare to be worth fuzzy-matching.
