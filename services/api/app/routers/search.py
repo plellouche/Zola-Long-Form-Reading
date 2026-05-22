@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
+from ..filters import arachnid_exclude_clause
 from ..models import Article, Profile
 from ..schemas import ArticleSummary, PublicProfile
 
@@ -33,6 +34,7 @@ async def search(
     article_stmt = (
         select(Article)
         .where(Article.search_tsv.op("@@")(ts_query))
+        .where(arachnid_exclude_clause(Article))
         .order_by(
             func.ts_rank_cd(Article.search_tsv, ts_query).desc(),
             Article.created_at.desc(),

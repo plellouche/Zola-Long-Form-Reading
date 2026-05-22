@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { requireUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
+import { ApiError } from '@longform/api-client';
 
 import { OnboardingForm } from './onboarding-form';
 
@@ -12,10 +13,20 @@ export default async function OnboardingPage() {
   await requireUser();
   const api = getServerApiClient();
 
-  const [profile, topics] = await Promise.all([
-    api.request<ProfileMe>('/api/users/me'),
-    api.request<Topic[]>('/api/topics'),
-  ]);
+  let profile: ProfileMe;
+  let topics: Topic[];
+  try {
+    [profile, topics] = await Promise.all([
+      api.request<ProfileMe>('/api/users/me'),
+      api.request<Topic[]>('/api/topics'),
+    ]);
+  } catch (err) {
+    // Stale or invalid session: bounce to /login so Supabase reissues a token.
+    if (err instanceof ApiError && err.status === 401) {
+      redirect('/login?next=/onboarding');
+    }
+    throw err;
+  }
 
   if (profile.onboarded_at) {
     redirect('/');

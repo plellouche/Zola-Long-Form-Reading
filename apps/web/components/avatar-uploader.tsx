@@ -120,7 +120,7 @@ export function AvatarUploader({
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={status === 'uploading'}
-          className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-sm font-medium disabled:opacity-50 hover:bg-[hsl(var(--accent))]"
+          className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-1.5 text-sm font-medium disabled:opacity-50 hover:bg-[hsl(var(--muted))]"
         >
           {status === 'uploading' ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
         </button>

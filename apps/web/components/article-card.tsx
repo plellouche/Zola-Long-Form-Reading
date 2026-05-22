@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
+import { stripHtml } from '@/lib/utils';
 
 export type ArticleCardData = Pick<
   ArticleSummary,
@@ -56,7 +57,7 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
           <h3 className="mt-2 text-base font-semibold leading-snug">{article.title}</h3>
           {article.description && (
             <p className="mt-2 line-clamp-3 text-sm text-[hsl(var(--muted-foreground))]">
-              {article.description}
+              {stripHtml(article.description)}
             </p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">

@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..filters import arachnid_exclude_clause
 from ..models import (
     Article,
     ArticleTopic,
@@ -47,7 +48,7 @@ async def _fatigued_source_ids(session: AsyncSession, user_id: UUID) -> set[UUID
     """Sources the user swiped-down on within SOURCE_FATIGUE_WINDOW."""
     cutoff = datetime.now(timezone.utc) - SOURCE_FATIGUE_WINDOW
     rows = await session.execute(
-        select(Event.metadata)
+        select(Event.event_metadata)
         .where(Event.user_id == user_id)
         .where(Event.event_type == "SOURCE_FATIGUE")
         .where(Event.created_at >= cutoff)
@@ -114,6 +115,7 @@ async def for_you_feed(
         .where(Source.is_active.is_(True))
         .where(Article.created_at >= cutoff)
         .where(Article.id.not_in(select(excluded_subq.c.article_id)))
+        .where(arachnid_exclude_clause(Article))
         .order_by(Article.created_at.desc())
         .limit(MAX_CANDIDATES_TO_SCORE)
     )
@@ -177,6 +179,7 @@ async def for_discover_deck(
         .where(Source.is_active.is_(True))
         .where(Article.created_at >= cutoff)
         .where(Article.id.not_in(select(excluded_subq.c.article_id)))
+        .where(arachnid_exclude_clause(Article))
         .order_by(Article.created_at.desc())
         .limit(MAX_CANDIDATES_TO_SCORE)
     )
@@ -246,6 +249,7 @@ async def related_articles(
         result = await session.execute(
             select(Article)
             .where(Article.source_id == seed.source_id, Article.id != seed.id)
+            .where(arachnid_exclude_clause(Article))
             .order_by(Article.created_at.desc())
             .limit(limit)
         )
@@ -266,6 +270,7 @@ async def related_articles(
         .where(Source.is_active.is_(True))
         .where(Article.created_at >= cutoff)
         .where(Article.id.not_in(excluded_ids))
+        .where(arachnid_exclude_clause(Article))
         .order_by(Article.created_at.desc())
         .limit(MAX_CANDIDATES_TO_SCORE)
     )
@@ -344,6 +349,7 @@ async def list_recommendations(
         .where(Source.is_active.is_(True))
         .where(Article.created_at >= cutoff)
         .where(Article.id.not_in(already_in_list))
+        .where(arachnid_exclude_clause(Article))
         .order_by(Article.created_at.desc())
         .limit(MAX_CANDIDATES_TO_SCORE)
     )

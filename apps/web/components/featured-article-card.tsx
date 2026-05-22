@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleCardData } from '@/components/article-card';
+import { stripHtml } from '@/lib/utils';
 
 type Props = {
   article: ArticleCardData;
@@ -44,7 +45,7 @@ export function FeaturedArticleCard({
             loading="lazy"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--border))]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-6 text-white">
@@ -59,7 +60,7 @@ export function FeaturedArticleCard({
           </h2>
           {article.description && (
             <p className="line-clamp-2 max-w-2xl text-sm text-white/85">
-              {article.description}
+              {stripHtml(article.description)}
             </p>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/70">

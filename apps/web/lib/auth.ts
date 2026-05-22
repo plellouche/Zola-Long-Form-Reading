@@ -12,10 +12,14 @@ export async function getUser(): Promise<User | null> {
   return data.user;
 }
 
-/** Redirects to /login if not signed in. */
+/** Redirects to /login if not signed in OR if no access token is available
+ *  (a degraded session where Supabase has a user but the local cookie no
+ *  longer carries a usable JWT — bouncing forces a fresh sign-in). */
 export async function requireUser(): Promise<User> {
   const user = await getUser();
   if (!user) redirect('/login');
+  const token = await getAccessToken();
+  if (!token) redirect('/login');
   return user;
 }
 

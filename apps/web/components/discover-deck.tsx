@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getBrowserApiClient } from '@/lib/api';
 import type { ArticleSummary } from '@/lib/api-types';
+import { stripHtml } from '@/lib/utils';
 
 type Direction = 'left' | 'right' | 'up' | 'down';
 
@@ -231,7 +232,7 @@ function BackCard({ depth, article }: { depth: number; article: ArticleSummary }
   const opacity = 1 - depth * 0.25;
   return (
     <div
-      className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]"
+      className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]"
       style={{
         transform: `translateY(${offset}px) scale(${scale})`,
         opacity,
@@ -262,7 +263,7 @@ function SwipeCard({
 
   return (
     <motion.div
-      className="absolute inset-0 z-10 cursor-grab overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-lg active:cursor-grabbing"
+      className="absolute inset-0 z-10 cursor-grab overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] shadow-lg active:cursor-grabbing"
       style={{ x, y, rotate }}
       drag={!disabled}
       dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
@@ -326,7 +327,7 @@ function CardContent({ article }: { article: ArticleSummary }) {
           className="h-56 w-full object-cover"
         />
       ) : (
-        <div className="h-56 w-full bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--accent))]" />
+        <div className="h-56 w-full bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--border))]" />
       )}
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
@@ -346,7 +347,7 @@ function CardContent({ article }: { article: ArticleSummary }) {
         )}
         {article.description && (
           <p className="line-clamp-5 text-sm text-[hsl(var(--muted-foreground))]">
-            {article.description}
+            {stripHtml(article.description)}
           </p>
         )}
       </div>

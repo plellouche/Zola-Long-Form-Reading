@@ -14,6 +14,7 @@ from ..auth import CurrentUser, get_current_user_optional
 from ..auth_admin import require_admin
 from ..cursor import decode_cursor, encode_cursor
 from ..database import get_session
+from ..filters import arachnid_exclude_clause
 from ..models import Article, ArticleTopic, Source, Topic
 from ..schemas import (
     ArticleCreate,
@@ -120,7 +121,7 @@ async def _execute(
     cursor: str | None,
     limit: int,
 ) -> ArticleListResponse:
-    stmt = select(Article)
+    stmt = select(Article).where(arachnid_exclude_clause(Article))
 
     if source_slug:
         stmt = stmt.join(Source).where(Source.slug == source_slug.lower())

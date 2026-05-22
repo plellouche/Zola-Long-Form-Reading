@@ -11,15 +11,16 @@ export function ThemeToggle() {
   // (resolvedTheme is undefined during SSR).
   useEffect(() => setMounted(true), []);
 
-  const isDark = resolvedTheme === 'dark';
+  const isDark = mounted && resolvedTheme === 'dark';
 
   return (
     <button
       type="button"
-      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-      title={isDark ? 'Light mode' : 'Dark mode'}
+      aria-label={mounted ? (isDark ? 'Switch to light theme' : 'Switch to dark theme') : 'Toggle theme'}
+      title={mounted ? (isDark ? 'Light mode' : 'Dark mode') : undefined}
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))] hover:text-[hsl(var(--foreground))]"
+      suppressHydrationWarning
     >
       {!mounted ? <span className="block h-4 w-4" /> : isDark ? <SunIcon /> : <MoonIcon />}
     </button>

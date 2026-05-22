@@ -6,93 +6,182 @@ real fix at ~50k articles is sentence embeddings (see COMMAND_CENTER §15).
 Combines:
 - Per-source default topics (loaded from source_default_topics table by the runner)
 - Keyword matches against title + description
+
+Each topic exposes two keyword tiers:
+
+  strong  — unambiguous; one match is enough to tag the topic
+  weak    — ambiguous in isolation (e.g. "summit" matches political summits
+            and mountain summits); need 2+ matches OR a co-occurring strong
+            match for the topic to be tagged
+
+Scoring: strong matches count 2.0 each, weak matches 1.0. A topic only
+appears in the output if its total score >= MIN_TOPIC_SCORE (= 2.0). This
+threshold means "the topic was either explicitly named or it appears at
+least twice in passing."
 """
 
 from __future__ import annotations
 
 import re
 
-# Each slug maps to a list of lowercase keyword stems. Word-boundary matched.
-KEYWORD_TO_TOPICS: dict[str, list[str]] = {
-    "philosophy": [
-        "philosophy", "philosopher", "metaphysics", "epistemology", "ontology",
-        "consciousness", "phenomenology", "ethics", "moral", "existential",
-        "stoicism", "nietzsche", "kant", "wittgenstein", "kierkegaard",
-    ],
-    "science": [
-        "science", "scientist", "biology", "physics", "chemistry", "neuroscience",
-        "genetics", "evolution", "quantum", "research", "experiment", "molecule",
-        "cell", "organism", "species", "neuron", "particle", "fossil", "darwin",
-    ],
-    "nature-environment": [
-        "wildlife", "ecology", "ecosystem", "wilderness", "conservation", "rewilding",
-        "forest", "ocean", "biodiversity", "habitat", "river", "wetland", "bird",
-        "naturalist",
-    ],
-    "mountaineering-climbing": [
-        "mountaineer", "alpinist", "alpinism", "climb", "climber", "ascent",
-        "summit", "glacier", "himalaya", "everest", "k2", "yosemite", "bivouac",
-        "ridge", "rope", "belay", "crampon",
-    ],
-    "adventure-exploration": [
-        "adventure", "expedition", "trek", "trekking", "explore", "explorer",
-        "backpacking", "thru-hike", "kayak", "kayaking", "paddle", "trail",
-        "cycle touring", "bikepacking", "polar",
-    ],
-    "politics-society": [
-        "politics", "political", "policy", "government", "election", "democracy",
-        "authoritarian", "fascis", "society", "inequality", "labor", "protest",
-        "civil rights", "movement", "voter", "congress",
-    ],
-    "culture-arts": [
-        "art", "artist", "film", "filmmaker", "cinema", "music", "musician",
-        "painting", "painter", "sculpture", "exhibition", "museum", "theater",
-        "theatre", "design", "fashion", "architecture",
-    ],
-    "literature-essays": [
-        "literature", "literary", "essay", "essayist", "novel", "novelist",
-        "fiction", "poetry", "poet", "memoir", "writer", "writing", "writes",
-        "novella", "translation", "translator", "prose",
-    ],
-    "energy-climate": [
-        "climate", "carbon", "renewable", "solar", "wind farm", "fossil fuel",
-        "emissions", "warming", "decarboniz", "transition", "grid", "nuclear",
-        "battery", "ev", "electric vehicle", "heat pump",
-    ],
-    "history": [
-        "history", "historian", "historical", "ancient", "medieval", "century",
-        "empire", "civilization", "archaeology", "archaeologist", "antiquity",
-        "ww1", "ww2", "world war", "renaissance",
-    ],
-    "technology": [
-        "technology", "software", "computer", "computing", "internet", "ai",
-        "artificial intelligence", "algorithm", "data", "programming", "startup",
-        "engineer", "code", "open source", "neural network", "llm", "chatbot",
-        "gpt",
-    ],
-    "economics": [
-        "economy", "economic", "economist", "market", "trade", "finance",
-        "financial", "monetary", "fiscal", "labor market", "gdp", "inflation",
-        "recession", "wage", "tariff", "central bank",
-    ],
+STRONG_WEIGHT = 2.0
+WEAK_WEIGHT = 1.0
+MIN_TOPIC_SCORE = 2.0
+
+
+# Each slug maps to {strong: [...], weak: [...]} of lowercase keyword stems.
+# Word-boundary matched.
+KEYWORD_TO_TOPICS: dict[str, dict[str, list[str]]] = {
+    "philosophy": {
+        "strong": [
+            "philosopher", "metaphysics", "epistemology", "ontology",
+            "phenomenology", "stoicism", "nietzsche", "kant", "wittgenstein",
+            "kierkegaard", "philosophy",
+        ],
+        "weak": ["ethics", "moral", "consciousness", "existential"],
+    },
+    "science": {
+        "strong": [
+            "neuroscience", "genetics", "quantum", "neuron", "fossil", "darwin",
+            "biology", "physics", "chemistry", "molecule", "scientist",
+        ],
+        "weak": [
+            "science", "evolution", "research", "experiment", "cell",
+            "organism", "species", "particle",
+        ],
+    },
+    "nature-environment": {
+        "strong": [
+            "wildlife", "ecology", "ecosystem", "wilderness", "conservation",
+            "rewilding", "biodiversity", "naturalist", "habitat", "wetland",
+        ],
+        "weak": ["forest", "ocean", "river", "bird"],
+    },
+    "mountaineering-climbing": {
+        "strong": [
+            "mountaineer", "mountaineering", "alpinist", "alpinism",
+            "climber", "everest", "k2", "himalaya", "himalayan",
+            "yosemite", "bivouac", "belay", "crampon", "ice axe",
+            "free solo", "big wall", "scrambling",
+        ],
+        # "summit", "ascent", "climb", "ridge", "rope", "pitch", "peak" are
+        # all heavily ambiguous (political summit, social climber, ridge of
+        # high pressure, rope-a-dope, sales pitch). Need a corroborating
+        # strong term or 2+ weak hits to count.
+        "weak": [
+            "summit", "ascent", "climb", "ridge", "rope", "pitch", "peak",
+            "glacier", "rappel",
+        ],
+    },
+    "adventure-exploration": {
+        "strong": [
+            "expedition", "thru-hike", "bikepacking", "polar expedition",
+            "trekking", "kayaking", "circumnavigat",
+        ],
+        "weak": [
+            "adventure", "trek", "explore", "explorer", "backpacking",
+            "kayak", "paddle", "trail", "cycle touring", "polar",
+        ],
+    },
+    "politics-society": {
+        "strong": [
+            "election", "democracy", "authoritarian", "fascis", "congress",
+            "voter", "political party", "civil rights",
+        ],
+        "weak": [
+            "politics", "political", "policy", "government", "society",
+            "inequality", "labor", "protest", "movement",
+        ],
+    },
+    "culture-arts": {
+        "strong": [
+            "filmmaker", "cinema", "musician", "sculpture", "exhibition",
+            "museum", "theater", "theatre", "architecture",
+        ],
+        "weak": [
+            "art", "artist", "film", "music", "painting", "painter",
+            "design", "fashion",
+        ],
+    },
+    "literature-essays": {
+        "strong": [
+            "novelist", "essayist", "novella", "translator", "poet",
+            "memoir", "literary",
+        ],
+        "weak": [
+            "literature", "essay", "novel", "fiction", "poetry", "writer",
+            "writing", "writes", "translation", "prose",
+        ],
+    },
+    "energy-climate": {
+        "strong": [
+            "carbon", "renewable", "decarboniz", "emissions", "fossil fuel",
+            "heat pump", "electric vehicle", "wind farm",
+        ],
+        "weak": [
+            "climate", "solar", "warming", "transition", "grid", "nuclear",
+            "battery", "ev",
+        ],
+    },
+    "history": {
+        "strong": [
+            "historian", "archaeology", "archaeologist", "antiquity",
+            "medieval", "renaissance", "ww1", "ww2", "world war",
+        ],
+        "weak": [
+            "history", "historical", "ancient", "century", "empire",
+            "civilization",
+        ],
+    },
+    "technology": {
+        "strong": [
+            "artificial intelligence", "algorithm", "open source",
+            "neural network", "programming", "software", "computing",
+            "llm", "chatbot", "gpt",
+        ],
+        "weak": [
+            "technology", "computer", "internet", "ai", "data",
+            "startup", "engineer", "code",
+        ],
+    },
+    "economics": {
+        "strong": [
+            "economist", "monetary", "fiscal", "gdp", "inflation",
+            "recession", "central bank", "tariff",
+        ],
+        "weak": [
+            "economy", "economic", "market", "trade", "finance",
+            "financial", "labor market", "wage",
+        ],
+    },
 }
 
 # Pre-compile regexes once.
-_TOPIC_PATTERNS: dict[str, list[re.Pattern[str]]] = {
-    slug: [re.compile(rf"\b{re.escape(kw)}", re.IGNORECASE) for kw in kws]
-    for slug, kws in KEYWORD_TO_TOPICS.items()
+_STRONG_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    slug: [re.compile(rf"\b{re.escape(kw)}", re.IGNORECASE) for kw in tier["strong"]]
+    for slug, tier in KEYWORD_TO_TOPICS.items()
+}
+_WEAK_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    slug: [re.compile(rf"\b{re.escape(kw)}", re.IGNORECASE) for kw in tier["weak"]]
+    for slug, tier in KEYWORD_TO_TOPICS.items()
 }
 
 
 def score_text(text: str) -> dict[str, float]:
-    """Return a dict of topic_slug -> raw match count for the given text."""
+    """Return a dict of topic_slug -> weighted score for the given text.
+
+    Topics whose score is below MIN_TOPIC_SCORE are dropped — a topic must
+    earn its place with either an unambiguous keyword or multiple weak hits.
+    """
     if not text:
         return {}
     scores: dict[str, float] = {}
-    for slug, patterns in _TOPIC_PATTERNS.items():
-        count = sum(1 for p in patterns if p.search(text))
-        if count > 0:
-            scores[slug] = float(count)
+    for slug in KEYWORD_TO_TOPICS:
+        strong_hits = sum(1 for p in _STRONG_PATTERNS[slug] if p.search(text))
+        weak_hits = sum(1 for p in _WEAK_PATTERNS[slug] if p.search(text))
+        score = strong_hits * STRONG_WEIGHT + weak_hits * WEAK_WEIGHT
+        if score >= MIN_TOPIC_SCORE:
+            scores[slug] = score
     return scores
 
 

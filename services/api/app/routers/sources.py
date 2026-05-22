@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..auth_admin import require_admin
 from ..database import get_session
+from ..filters import arachnid_exclude_clause
 from ..models import Article, Source, SourceFollow
 from ..schemas import SourceCreate, SourceFollowAck, SourceOut, SourceUpdate
 
@@ -38,6 +39,7 @@ async def list_sources(
 ) -> list[SourceOut]:
     count_subq = (
         select(Article.source_id, func.count(Article.id).label("n"))
+        .where(arachnid_exclude_clause(Article))
         .group_by(Article.source_id)
         .subquery()
     )
@@ -64,7 +66,9 @@ async def get_source(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
 
     article_count = await session.scalar(
-        select(func.count(Article.id)).where(Article.source_id == source.id)
+        select(func.count(Article.id))
+        .where(Article.source_id == source.id)
+        .where(arachnid_exclude_clause(Article))
     )
     followers_count = await session.scalar(
         select(func.count()).select_from(SourceFollow).where(SourceFollow.source_id == source.id)

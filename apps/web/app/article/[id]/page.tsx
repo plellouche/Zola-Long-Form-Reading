@@ -11,6 +11,7 @@ import { getUser } from '@/lib/auth';
 import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ArticleSummary, UserArticleState, UserArticleStatus } from '@/lib/api-types';
+import { stripHtml } from '@/lib/utils';
 import { ApiError } from '@longform/api-client';
 
 type Source = { id: string; slug: string; name: string };
@@ -49,19 +50,20 @@ export async function generateMetadata({
       author: string | null;
       source: { name: string };
     }>(`/api/articles/${id}`);
+    const cleanDescription = stripHtml(article.description) || `An article from ${article.source.name}.`;
     return {
       title: article.title,
-      description: article.description ?? `An article from ${article.source.name}.`,
+      description: cleanDescription,
       openGraph: {
         title: article.title,
-        description: article.description ?? '',
+        description: cleanDescription,
         type: 'article',
         images: article.og_image_url ? [{ url: article.og_image_url }] : undefined,
       },
       twitter: {
         card: 'summary_large_image',
         title: article.title,
-        description: article.description ?? '',
+        description: cleanDescription,
         images: article.og_image_url ? [article.og_image_url] : undefined,
       },
     };
@@ -167,7 +169,7 @@ export default async function ArticlePage({
 
       {article.description && (
         <p className="mt-6 max-w-prose text-xl leading-relaxed text-[hsl(var(--muted-foreground))]">
-          {article.description}
+          {stripHtml(article.description)}
         </p>
       )}
 

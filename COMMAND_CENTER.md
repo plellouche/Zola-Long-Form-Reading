@@ -828,6 +828,8 @@ These look like obvious wins but trap effort or scope:
 
 Items consciously deferred during Phases 0–8 that aren't scale-triggered (those live in §15). Each entry includes why it was deferred and what triggers picking it up.
 
+> **For larger phase-sized initiatives** (auth, deployment, marketing home, themes, in-app reader, mobile, observability), see **`ROADMAP.md`** at the repo root. This section is for small backlog items; `ROADMAP.md` is the forward plan for Phase 11+.
+
 ### UX polish
 
 **Drag-and-drop list reorder** — current `/list/[id]` uses up/down arrow buttons per row. DnD that's accessible, touch-friendly, and survives keyboard nav is non-trivial; `dnd-kit` is the standard. Pick up when at least one user complains, or when adding multi-select.

@@ -36,7 +36,15 @@ def _extract_bearer_token(request: Request) -> str:
 
 def _decode_token(token: str, settings: Settings) -> dict:
     """Verify a Supabase access token, supporting both modern (ES256/RS256 via JWKS)
-    and legacy (HS256 shared secret) signing schemes."""
+    and legacy (HS256 shared secret) signing schemes.
+
+    iat verification is disabled and exp gets a small leeway. Reason: real
+    deployments routinely see a few seconds of clock skew between the IdP
+    that mints the token (Supabase) and the API that verifies it; iat-in-
+    the-future tokens should not 401 just because two machines disagree by
+    seconds. exp is still enforced (with leeway) so expired tokens never
+    get a pass.
+    """
     try:
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as exc:
@@ -47,7 +55,11 @@ def _decode_token(token: str, settings: Settings) -> dict:
     alg = header.get("alg")
     kid = header.get("kid")
 
-    common = {"audience": "authenticated"}
+    common = {
+        "audience": "authenticated",
+        "leeway": 300,  # 5 minutes — generous for ordinary clock skew
+        "options": {"verify_iat": False},
+    }
 
     if alg in ASYMMETRIC_ALGS and kid:
         signing_key = _jwks_client(settings.supabase_url).get_signing_key_from_jwt(token).key
