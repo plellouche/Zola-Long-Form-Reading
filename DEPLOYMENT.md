@@ -2,6 +2,16 @@
 
 > Operational reference for deploying and re-deploying Zola to production. Pairs with `ROADMAP.md` (strategy) and `PROGRESS.md` (history). When operations change, update this file.
 
+## ⚠️ Carry-forward TODOs (deferred during Phase 12)
+
+These are intentionally-deferred items that will eventually need to happen. Marked here at the top of the doc so they don't get lost in the bigger sections below.
+
+- **Vercel Preview env vars** — not set. Means PR-preview deploys build but break at runtime. Re-enable when adopting a PR-based workflow. See [§ Pull-request previews](#pull-request-previews-deferred--re-enable-later) for the exact 3-step recipe.
+- **Render free → Starter ($7/mo)** — switch when the keep-awake hack becomes insufficient or the first user complains about cold-start latency. The keep-Render-awake GH workflow becomes redundant on Starter — delete it then.
+- **Separate Supabase project for previews** — if PR previews matter, you'll want one. Production and preview currently share a database, so risky PR work could corrupt prod data.
+- **Custom Supabase email provider** — Supabase free-tier email is heavily rate-limited (current sign-in OTP issue). Once Phase 11 moves us to password auth this matters less, but if you keep email-based flows, hook up a Resend/Postmark sender via Supabase Auth settings → SMTP.
+- **Sentry / error tracking** — Phase 17 territory; trigger is the first real user-visible error you didn't catch in logs.
+
 ## Topology
 
 ```
@@ -274,13 +284,29 @@ Or use the dashboard: Deployments → click the previous good one → "Promote t
 
 For Render, redeploy a previous commit by clicking through the dashboard's deploy history.
 
-## Pull-request previews (when enabled)
+## Pull-request previews (DEFERRED — re-enable later)
 
-Currently disabled because we never added env vars to the Preview environment. When you want PR previews:
+**Current state**: every PR builds, but the build will fail at runtime because the **Preview** environment is missing all three `NEXT_PUBLIC_*` env vars. We deliberately deferred this — the Vercel CLI v54 has a bug that blocks adding Preview env vars non-interactively (see the gotchas section). Production-only deploys work fine via `git push origin main`.
 
-1. Dashboard → Settings → Environment Variables → add the three `NEXT_PUBLIC_*` vars to Preview as well.
-2. Push a PR. Vercel will auto-create a preview deploy and post the URL as a PR comment.
-3. The preview will share the production Supabase project (same DB, same Auth) — so test with care. For full isolation, set up a separate Supabase project for preview and use a different `NEXT_PUBLIC_SUPABASE_URL`.
+### When to re-enable
+- You start using a feature-branch workflow with PRs (instead of pushing straight to `main`)
+- You want a teammate or reviewer to see changes on a Vercel-hosted URL before merge
+- You want to test a risky change against production data without affecting `main`
+
+### How to re-enable (10 minutes, dashboard-only)
+1. **Vercel dashboard** → project `zola` → Settings → Environment Variables: https://vercel.com/paullellouche/zola/settings/environment-variables
+2. For each of these three keys, **add a new entry targeting "Preview"** (production entries already exist — don't touch those):
+   | Key | Value (same as production) |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://rkyephzcumidqnhqmhfw.supabase.co` |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | (the anon key from local `.env`) |
+   | `NEXT_PUBLIC_API_URL` | `https://api.zolalongform.com` |
+3. Save. The next PR push will get a working preview deploy with a URL posted as a comment.
+4. (Optional, recommended later) For real isolation, create a **separate Supabase project** for previews so PR experimentation can't corrupt production data. Then point the Preview `NEXT_PUBLIC_SUPABASE_URL` at that staging project instead.
+
+### Implications
+- Until re-enabled, **don't open PRs you intend to test from a Vercel preview** — they'll build but the runtime will throw on missing env vars. Push directly to `main` for now.
+- The keep-Render-awake workflow doesn't care about previews; it only pings the production API.
 
 ## Future: switch to Pro
 
