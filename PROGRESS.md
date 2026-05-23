@@ -447,6 +447,42 @@ Plan: `PHASE_10_POLISH.md`.
 
 ---
 
+## Phase 12 — Production Deployment
+
+**Status (2026-05-23)**: partial — frontend deployed; backend + final wiring outstanding. Operational runbook: `DEPLOYMENT.md`. Plan: `ROADMAP.md` Phase 12.
+
+### Shipped
+- **Vercel project `zola`** under `paullellouche/zola` (org `team_HJEK7KT4Z4OAUHOewuUDXhXK`, project `prj_oBr0mniHQuqUbW1Wm1yiW4jbSpBu`).
+  - Root Directory: `apps/web`. Framework auto-detected.
+  - Workspace install handled automatically because `pnpm-workspace.yaml` lives at the repo root — Vercel walks up from the Root Directory and installs the whole workspace, then builds the Next.js app.
+  - Auto-deploys on push to `main` via the Vercel-GitHub integration.
+  - **Live production URL**: `https://zolalongform.com` (custom domain via GoDaddy, SSL via Let's Encrypt). The Vercel-assigned URL `zola-brown-mu.vercel.app` also still resolves and 308-redirects to the custom domain.
+- **Production env vars set** via CLI (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`). The last is currently a placeholder (`https://api-placeholder.invalid`) — anything hitting FastAPI 500s on the live site until Render is up. Unauthenticated pages still render correctly.
+- **Build config** lives on the Vercel project (not in repo) — Root Directory `apps/web`, framework `nextjs`, install/build/output defaults. We tried `vercel.json` first; removing it let auto-detection take over cleanly.
+
+### Outstanding
+- [ ] **FastAPI on Render**: write Dockerfile (or use Render's Python runtime), set env vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`), configure health check at `/healthz`. Pick free-tier-with-sleep vs $7/mo always-on.
+- [ ] **CORS in `services/api/app/main.py`**: add the Vercel URL (and eventually the custom domain) to `allow_origins`. Must happen before Render deploy or the frontend can't reach the API.
+- [ ] **Supabase Site URL + Redirect URLs**: add `https://zola-brown-mu.vercel.app` (and `/**` wildcard). Without this, sign-in emails redirect to `localhost:3000`.
+- [ ] **Update `NEXT_PUBLIC_API_URL` on Vercel** to the real Render URL once the API is up, then redeploy (env-var changes don't auto-rebuild).
+- [ ] **Preview env vars on Vercel**: deferred. CLI v54 has a non-interactive quirk that blocks `vercel env add … preview --yes` without a TTY. PR-preview deploys will fail with "missing env var" until these are added — do via dashboard if/when PR previews matter.
+- [ ] **Custom domain**: buy, attach to Vercel, attach API subdomain to Render. Update Supabase and CORS.
+- [ ] **GH Actions ingestion**: move `DATABASE_URL` from local `.env` to Actions secrets.
+- [ ] **End-to-end smoke test on production URLs**: sign up → onboard → save → discover → follow.
+
+### Notable Phase 12 decisions
+- **Vercel monorepo handling via Root Directory + workspace auto-detect.** Initial attempts to set `rootDirectory: null` (i.e. repo root) failed with "No Next.js version detected" because Vercel looks for Next.js in the deploy directory's `package.json`. The working pattern is: Root Directory = `apps/web`, and Vercel automatically walks up to install the pnpm workspace from the repo root. No custom `vercel.json` needed.
+- **Placeholder `NEXT_PUBLIC_API_URL`.** Lets us ship the frontend independently of the backend. Unauthenticated routes still render; authenticated routes will visibly error until Render is up. Worth it for the partial-deploy verification.
+- **No custom domain yet.** Vercel-assigned URL is good enough for soft launch and lets us defer the cost of a domain until we know what we want.
+- **Preview env vars deferred.** Vercel CLI v54 has a non-interactive quirk where `--yes` doesn't satisfy the "which git branch" prompt for preview targets. Production-only deploys work fine; preview deploys would currently fail at build time without env vars. Acceptable trade-off — we don't have an active PR workflow yet.
+
+### Surfaces verified
+- `npx vercel --prod` returns `readyState: READY`. Deployment inspector URL: `https://vercel.com/paullellouche/zola/Abk1Mx8WwcvFad1ZyA9L9F2DNWBV`.
+- Build log shows 378 packages installed via pnpm, 17 routes generated.
+- (Pending) Browser visit to confirm public pages render with new Zola brand.
+
+---
+
 ## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---

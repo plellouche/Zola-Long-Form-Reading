@@ -1,0 +1,37 @@
+# Render Blueprint — services/api (FastAPI backend for Zola)
+#
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After this blueprint is applied in the Render dashboard the FIRST time, env
+# vars marked `sync: false` need to be filled in manually (Render won't pull
+# secrets from local). After that, pushes to `main` redeploy automatically.
+
+services:
+  - type: web
+    name: zola-api
+    runtime: python
+    plan: free   # Sleeps after 15min idle on first request. Upgrade to "starter" ($7/mo) once invitees exist.
+    region: oregon   # Closest region for typical Supabase US East workloads is fine; pick whatever's nearest your Supabase project.
+    branch: main
+    rootDir: services/api
+    autoDeploy: true
+    pythonVersion: "3.12"
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      # ---- Public configuration ----
+      - key: SUPABASE_URL
+        sync: false   # set from your local .env's NEXT_PUBLIC_SUPABASE_URL
+      # ---- Secrets ----
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false   # service-role key from Supabase project settings
+      - key: SUPABASE_JWT_SECRET
+        sync: false   # legacy HS256 secret; can be empty if project uses modern JWKS only
+      - key: DATABASE_URL
+        sync: false   # the asyncpg connection string from your local .env
+      - key: RESEND_API_KEY
+        sync: false   # only required if admin invites are sent from prod
+      # ---- Hosting metadata Render injects automatically (no need to set) ----
+      # PORT — Render-assigned
+      # PYTHON_VERSION — from pythonVersion above

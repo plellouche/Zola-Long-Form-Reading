@@ -37,6 +37,8 @@
 
 ## Phase 12 — Production Deployment
 
+**Status (2026-05-23)**: Frontend on Vercel is live; FastAPI + final wiring still to do. Operational details and exact commands live in `DEPLOYMENT.md` — read that for the doing; this section is the plan.
+
 **Goal**: Get the app onto real URLs so it can be shared.
 
 **Why now**: The app is feature-complete enough for invitees. Deployment is the bottleneck between "this works on my Mac" and "this is a product."
@@ -44,29 +46,32 @@
 ### Architecture
 | Component | Host | Domain |
 |---|---|---|
-| Frontend (Next.js) | Vercel | `longform.app` (or chosen custom domain) |
-| Backend (FastAPI) | Render (or Fly.io) | `api.longform.app` |
+| Frontend (Next.js) | Vercel | `zolalongform.com` ✅ live, HTTPS via Let's Encrypt |
+| Backend (FastAPI) | Render (or Fly.io) | `api.zolalongform.com` (planned) |
 | DB + Auth + Storage | Supabase | managed |
 | Ingestion cron | GitHub Actions (already wired) | n/a |
 
-### Tasks
-1. **Domain**: purchase / configure a domain. Set Vercel + Render DNS.
-2. **Vercel project**: import from GitHub, add env vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`). Auto-deploy on `main` push.
-3. **Render service** for FastAPI: Dockerfile or native Python; env vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`). Health-check endpoint `/healthz` already exists.
-4. **Supabase Auth config**: update Site URL + Redirect URLs to include production domain. Without this, magic links / password resets land at `localhost`.
-5. **CORS**: tighten `services/api/app/main.py` `allow_origins` to `["https://longform.app"]` (currently `["http://localhost:3000"]` only — production will fail).
-6. **GH Actions secrets**: move ingestion `DATABASE_URL` from local `.env` to Actions secrets.
-7. **Cold-start mitigation**: Render free tier sleeps after 15min idle. Either pay $7/mo for always-on, or accept the 30s wake-up on first request. Document the trade-off.
-8. **Pre-launch smoke test**: sign up fresh account → onboard → save → list → discover → follow → all on production URLs.
+### Status of each task
+
+- [x] **Vercel project**: imported from GitHub. Root Directory = `apps/web`; framework auto-detects the pnpm workspace from the repo root. Production env vars set: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` (currently a placeholder). Auto-deploys on push to `main` via the Vercel-GitHub integration.
+- [ ] **Preview env vars on Vercel**: deferred. Vercel CLI v54 has a non-interactive quirk where adding env vars to `preview` requires a TTY even with `--yes`. Production works fine. Add via dashboard if/when PR previews are needed.
+- [ ] **Render service** for FastAPI: not started. Needs a Dockerfile (or `requirements.txt` + start command for the native Python runtime), env vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`), and the existing `/healthz` endpoint as the health check. Render free tier sleeps after 15 min idle; either pay $7/mo for always-on or accept ~30 s wake-up on first request.
+- [ ] **Supabase Auth config**: update **Site URL** + **Redirect URLs** in the Supabase dashboard to include the Vercel production URL (and the custom domain when ready). Without this, magic-link / OTP / password-reset emails land back at `localhost:3000`.
+- [ ] **FastAPI CORS**: `services/api/app/main.py` `allow_origins` currently lists only `http://localhost:3000`. Add the Vercel URL and the future custom domain. Must be done **before** Render deploy or the frontend can't talk to the API.
+- [ ] **Wire frontend → API**: once Render is live, replace the `NEXT_PUBLIC_API_URL` placeholder on Vercel with the real Render URL and redeploy. (Env-var changes don't auto-trigger a rebuild.)
+- [ ] **Domain**: purchase a real domain. Attach to Vercel (frontend) and to Render (subdomain like `api.<domain>`). Update Supabase + CORS to include it.
+- [ ] **GH Actions secrets**: ingestion cron currently reads `DATABASE_URL` from a local `.env`. For production, move it to GitHub Actions secrets so the scheduled run can write to Supabase from CI.
+- [ ] **Cold-start mitigation**: decide on Render plan ($0 free w/ sleep vs $7 always-on) once the API is live and we see real cold-start impact.
+- [ ] **Pre-launch smoke test**: sign up fresh account → onboard → save → list → discover → follow → all on production URLs. Verify the auth flow end-to-end with Supabase email delivery actually working.
 
 ### Dependencies
-- Phase 11 (auth) should ship first — production OTP rate limits are restrictive on the free tier.
-- A real domain name.
+- Phase 11 (auth) should ship first — production OTP rate limits are restrictive on the free tier. Currently deferred; we're shipping Phase 12 with the existing OTP flow and `/dev/sign-in-as` (which is automatically disabled outside `NODE_ENV=development`).
+- A real domain name (deferred — Vercel-assigned URL is fine for soft launch).
 
-### Trigger to start
-- Phase 11 lands AND you're ready to invite at least 1 non-yourself person.
+### Trigger to start the remaining work
+- Now. The remaining steps are sequential: CORS → Render → update Vercel env var → smoke test. Then domain whenever convenient.
 
-**Estimate**: 1 day end-to-end, plus a week of low-level fix-and-redeploy as production surfaces edge cases.
+**Estimate remaining**: ~half a day for Render + Supabase Auth + smoke test, assuming nothing surprises us. Custom domain is another ~30 minutes once chosen.
 
 ---
 

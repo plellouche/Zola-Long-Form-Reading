@@ -37,15 +37,15 @@ export async function NavBar() {
 
   return (
     <header className="border-b border-[hsl(var(--border))]">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 py-3 pl-2 pr-4 sm:py-4 sm:pl-3 sm:pr-6">
         <Link
           href="/"
-          className="font-display text-[2.25rem] leading-none tracking-tight text-[hsl(var(--primary))]"
+          className="font-display text-[3rem] leading-none tracking-tight text-[hsl(var(--primary))]"
         >
           Zola
         </Link>
 
-        <div className="hidden flex-1 md:block">
+        <div className="hidden flex-1 pl-6 md:block">
           <SearchInput variant="nav" />
         </div>
         <div className="ml-auto md:hidden" />
