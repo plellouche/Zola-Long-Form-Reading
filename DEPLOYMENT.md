@@ -183,6 +183,19 @@ printf "%s" "https://zola-api.onrender.com" \
 npx vercel --prod --yes
 ```
 
+### 3b. Wire the keep-awake workflow
+
+We ship on Render Free, which sleeps after 15 min idle. To avoid the 30–60 s cold-start hit, a `.github/workflows/keep-render-awake.yml` workflow pings `/healthz` every 10 minutes. To activate it:
+
+1. **Set the GitHub secret**:
+   - Repo → Settings → Secrets and variables → Actions → New repository secret
+   - Name: `RENDER_API_URL`
+   - Value: `https://zola-api.onrender.com` (or whatever Render gave you)
+2. **Trigger a test run**: Actions → "Keep Render awake" → Run workflow → main. Should return HTTP 200 in <2s once the service is warm.
+3. From then on it runs every 10 minutes automatically. GitHub may occasionally skip a run during high load — the 10-min interval gives a safety buffer before Render's 15-min sleep threshold.
+
+When you upgrade Render to Starter ($7/mo always-on), **delete this workflow** — it becomes pointless overhead.
+
 ### 4. Update Supabase Auth
 
 Dashboard → Authentication → URL Configuration:
