@@ -15,7 +15,11 @@ services:
     branch: main
     rootDir: services/api
     autoDeploy: true
-    buildCommand: pip install -r requirements.txt
+    # Install requirements.txt AND the workspace ingest package, which
+    # `routers/ingest.py` imports for the admin-triggered manual ingest.
+    # (Path is relative to rootDir, so ../../packages/ingest resolves to
+    # <repo>/packages/ingest.)
+    buildCommand: pip install -r requirements.txt && pip install ../../packages/ingest
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
