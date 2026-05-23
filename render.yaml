@@ -15,11 +15,15 @@ services:
     branch: main
     rootDir: services/api
     autoDeploy: true
-    pythonVersion: "3.12"
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
+      # ---- Runtime ----
+      # Python version is controlled via this env var on Render (the older
+      # service-level `pythonVersion` field was removed from the blueprint schema).
+      - key: PYTHON_VERSION
+        value: "3.12.7"
       # ---- Public configuration ----
       - key: SUPABASE_URL
         sync: false   # set from your local .env's NEXT_PUBLIC_SUPABASE_URL
@@ -34,4 +38,3 @@ services:
         sync: false   # only required if admin invites are sent from prod
       # ---- Hosting metadata Render injects automatically (no need to set) ----
       # PORT — Render-assigned
-      # PYTHON_VERSION — from pythonVersion above
