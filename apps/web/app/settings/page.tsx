@@ -4,6 +4,7 @@ import { AvatarUploader } from '@/components/avatar-uploader';
 import { requireUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 
+import { ChangePasswordForm } from './change-password-form';
 import { SettingsForm } from './settings-form';
 
 type ProfileMe = {
@@ -16,7 +17,7 @@ type ProfileMe = {
 };
 
 export default async function SettingsPage() {
-  await requireUser();
+  const user = await requireUser();
   const profile = await getServerApiClient().request<ProfileMe>('/api/users/me');
 
   if (!profile.onboarded_at) {
@@ -45,6 +46,18 @@ export default async function SettingsPage() {
         initialDisplayName={profile.display_name ?? ''}
         initialBio={profile.bio ?? ''}
       />
+
+      {user.email && (
+        <section className="mt-12 border-t border-[hsl(var(--border))] pt-8">
+          <h2 className="text-sm font-medium">Change password</h2>
+          <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+            Signed in as {user.email}.
+          </p>
+          <div className="mt-4">
+            <ChangePasswordForm email={user.email} />
+          </div>
+        </section>
+      )}
     </main>
   );
 }

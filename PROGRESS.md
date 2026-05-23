@@ -483,6 +483,44 @@ Plan: `PHASE_10_POLISH.md`.
 
 ---
 
+## Phase 11 — Email + Password Auth
+
+**Status (2026-05-23)**: shipped. Plan: `PHASE_11_AUTH.md`.
+
+### Shipped
+- **Supabase Auth config**: "Confirm email" disabled. Signup → immediately signed in.
+- **`/signup` (new)**: email + password with `zxcvbn-ts` strength meter. Min length 12 chars + score ≥ 2. Calls `supabase.auth.signUp` → routes to `/onboarding`.
+- **`/login` rewritten**: primary flow is email + password (`signInWithPassword`). OTP code flow kept as a fallback behind "Use email code instead" — same component, mode-state-driven. "Forgot password?" link → `/forgot-password`.
+- **`/forgot-password` (new)**: single email field, calls `resetPasswordForEmail` with `redirectTo` set to `<origin>/auth/reset-password`. Anti-enumeration: same generic "if registered, link is on its way" success message whether the email exists or not.
+- **`/auth/reset-password` (new)**: parses access_token + refresh_token from URL fragment, calls `setSession`, shows new-password form, calls `updateUser({password})`, then `signOut()` so the user re-enters credentials. Self-contained — does not rely on global AuthFragmentHandler (race-free).
+- **`/settings`** gains a "Change password" section: current + new + confirm. Current password verified via a quick `signInWithPassword` round-trip (Supabase doesn't expose a dedicated "verify password" endpoint, but a successful sign-in is the canonical equivalent).
+- **`lib/password.ts`**: shared strength-meter helper. Lazy-initialized `zxcvbn-ts` setup, single `estimateStrength()` API.
+- **`/dev/sign-in-as`** untouched — still works for local dev, still refuses to run outside `NODE_ENV=development`.
+
+### Decisions
+- **OAuth providers (Google / GitHub) deferred to Phase 11.5.** Account-linking edge cases easier to handle after email/password is shipped.
+- **Email confirmation OFF for the invite-only beta.** Re-enable before going fully public + before sending any transactional emails.
+- **Password complexity**: min 12 chars + zxcvbn score ≥ 2 (≈ "Okay" — guessable but not trivial). No character-class rules per NIST 800-63B.
+- **Anti-enumeration** on `/login` and `/forgot-password`: errors say "Email or password is incorrect" / "if registered…" rather than differentiating between "no such user" and "wrong password".
+- **Bundle cost**: `/signup` and `/settings` first-load JS jumped to ~970 KB from the zxcvbn-ts English dictionary. Acceptable for now (one-time download per session); revisit with lazy-loading if it becomes a metric.
+
+### Migration note for OTP-era accounts
+- Pre-Phase-11 accounts (signed up via OTP) have no password set in `auth.users`.
+- They will get "Email or password is incorrect" on the password form until they run "Forgot password" to set one — OR use the "Use email code instead" fallback on `/login`.
+- One-time outreach to existing invitees: tell them to either reset their password or use the OTP code option.
+
+### Files touched
+- New: `apps/web/lib/password.ts`, `apps/web/app/signup/page.tsx`, `apps/web/app/forgot-password/page.tsx`, `apps/web/app/auth/reset-password/page.tsx`, `apps/web/app/settings/change-password-form.tsx`
+- Rewritten: `apps/web/app/login/page.tsx`
+- Modified: `apps/web/app/settings/page.tsx` (adds change-password section)
+- Backend: untouched (Supabase Auth handles password verification; FastAPI just verifies the JWT)
+
+### Surfaces verified
+- `pnpm typecheck` clean across all changes.
+- `pnpm build` clean; all new routes built. `/signup` 970 KB, `/settings` 976 KB, `/auth/reset-password` ≈ same family.
+
+---
+
 ## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---

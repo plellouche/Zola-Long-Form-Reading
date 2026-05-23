@@ -6,32 +6,23 @@
 
 ---
 
-## Phase 11 — Username + Password Auth (Production-ready Sign-in)
+## Phase 11 — Email + Password Auth ✅
 
-**Goal**: Replace the OTP-only flow with a durable username/password sign-in so users don't get logged out between sessions and don't depend on Supabase's email delivery for every login.
+**Status (2026-05-23)**: shipped. Detailed implementation notes in `PROGRESS.md` § "Phase 11 — Email + Password Auth"; plan + decisions log in `PHASE_11_AUTH.md`.
 
-**Why now**: OTP/magic-link is fragile in dev (rate limits, SMTP misconfig) and adds friction for returning users in prod. Username/password is what people expect for a content app. Magic-link should remain as a fallback for password reset.
+**Goal (delivered)**: Replace OTP-only sign-in with email + password as the primary flow. OTP / magic-link kept as a fallback (`/login` → "Use email code instead" toggle) for two reasons: pre-Phase-11 accounts that never set a password can still bootstrap, and corporate-inbox cases where password emails are unreliable.
 
-### Scope
-- `/login`: add a password field; call `supabase.auth.signInWithPassword({ email, password })`. Keep OTP as a fallback ("Sign in with email code").
-- `/signup` (new): collect email + password (min 12 chars, basic strength feedback), call `supabase.auth.signUp`, redirect to `/onboarding`. Username picking already happens in onboarding.
-- `/forgot-password` (new): send a reset email via Supabase `resetPasswordForEmail`; landing page `/auth/reset-password` accepts new password.
-- `/settings`: add a "Change password" section requiring current-password confirmation.
-- Persistent sessions: configure Supabase to issue long-lived refresh tokens (default 30 days is fine); document the trade-off in `PROGRESS.md`.
-- `/dev/sign-in-as` stays as the local dev fast-path — no email round-trip ever needed.
-- Optional: rate-limit `/login` failed attempts at the FastAPI side (`events` table + a 5-fails-in-15min check). Defer until abuse appears.
+**What shipped**:
+- `/signup` (new) with `zxcvbn-ts` strength meter, min 12-char password, no character-class rules.
+- `/login` rewritten — password primary, OTP code behind toggle.
+- `/forgot-password` + `/auth/reset-password` (Supabase `resetPasswordForEmail` round-trip).
+- "Change password" section on `/settings` (verifies current via a sign-in round-trip since Supabase has no dedicated verify endpoint).
+- Anti-enumeration error copy on `/login` and `/forgot-password`.
+- Email confirmation disabled on Supabase for the invite-only beta.
 
-### Dependencies
-- Supabase project Auth settings: enable Email + Password provider, disable confirm-email-required if we want frictionless signup, or wire the confirmation flow if we want it.
-- Email provider (Resend) already configured for invites; reuse for password-reset emails.
+**Deferred to Phase 11.5**: OAuth providers (Google / GitHub). Reasoning: account-linking edge cases are easier to address after email/password is shipped. Trigger to start 11.5: ≥1 invitee says they'd rather sign in with Google, or you want to reduce friction for a public launch (Phase 13).
 
-### Pre-work
-- Audit every place we currently assume OTP — the magic-link callback at `/auth/callback`, the URL-fragment handler in `auth-fragment-handler.tsx`. Keep them functional for reset flows, but they're no longer the primary path.
-
-### Trigger to start
-- The user (you) is tired of OTP in dev (already true), OR you invite the first non-dev person and they bounce off the OTP flow. Either gates this work to Phase 11 as the **immediate next phase**.
-
-**Estimate**: ~1 day of focused work.
+**Existing-user migration note**: OTP-era accounts have no password set. They need to run "Forgot password" once (or use the legacy OTP code option) before they can sign in with a password. Send a one-line heads-up to anyone in that bucket.
 
 ---
 
