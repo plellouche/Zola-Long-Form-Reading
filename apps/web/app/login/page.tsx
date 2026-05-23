@@ -91,7 +91,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={step === 'sending' || !email.trim()}
-              className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+              className="w-full rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
             >
               {step === 'sending' ? 'Sending…' : 'Send code'}
             </button>
@@ -136,7 +136,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={step === 'verifying' || code.length !== 6}
-            className="w-full rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+            className="w-full rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
           >
             {step === 'verifying' ? 'Verifying…' : 'Sign in'}
           </button>

@@ -59,7 +59,7 @@ export function InviteForm() {
       <button
         type="submit"
         disabled={submitting || !email.trim()}
-        className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm text-[hsl(var(--background))] disabled:opacity-50"
+        className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm text-[hsl(var(--primary-foreground))] disabled:opacity-50"
       >
         {submitting ? 'Sending…' : 'Send invite'}
       </button>

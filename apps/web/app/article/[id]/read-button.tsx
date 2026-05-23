@@ -28,7 +28,7 @@ export function ReadArticleButton({ articleId, url }: { articleId: string; url: 
       target="_blank"
       rel="noopener noreferrer"
       onClick={handleClick}
-      className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--foreground))] px-5 py-2.5 text-sm font-medium text-[hsl(var(--background))]"
+      className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--primary))] px-5 py-2.5 text-sm font-medium text-[hsl(var(--primary-foreground))]"
     >
       {pending ? 'Opening…' : 'Read article'}
       <span aria-hidden>→</span>

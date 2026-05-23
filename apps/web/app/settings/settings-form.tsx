@@ -75,7 +75,7 @@ export function SettingsForm({
         <button
           type="submit"
           disabled={status === 'saving'}
-          className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+          className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
         >
           {status === 'saving' ? 'Saving…' : 'Save'}
         </button>

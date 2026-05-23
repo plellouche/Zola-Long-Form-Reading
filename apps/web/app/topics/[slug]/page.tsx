@@ -22,7 +22,7 @@ export async function generateMetadata({
       `/api/topics/${slug}`,
     );
     const desc =
-      topic.description ?? `Articles tagged ${topic.name} from across the Longform library.`;
+      topic.description ?? `Articles tagged ${topic.name} from across the Zola library.`;
     return {
       title: topic.name,
       description: desc,

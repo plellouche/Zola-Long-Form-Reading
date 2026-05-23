@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 
+import { useToast } from '@/components/toast';
 import { getBrowserApiClient } from '@/lib/api';
 import { ApiError } from '@longform/api-client';
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function FollowSourceButton({ slug, initiallyFollowing }: Props) {
+  const toast = useToast();
   const [following, setFollowing] = useState(initiallyFollowing);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -24,14 +26,17 @@ export function FollowSourceButton({ slug, initiallyFollowing }: Props) {
         await getBrowserApiClient().request(`/api/sources/${slug}/follow`, {
           method: next ? 'POST' : 'DELETE',
         });
+        toast.show(next ? 'Following source' : 'Unfollowed source', {
+          kind: next ? 'success' : 'info',
+        });
       } catch (err) {
         setFollowing(!next);
-        if (err instanceof ApiError) {
-          const detail = (err.body as { detail?: string } | null)?.detail;
-          setError(detail ?? err.message);
-        } else {
-          setError('Could not update follow.');
-        }
+        const detail =
+          err instanceof ApiError
+            ? ((err.body as { detail?: string } | null)?.detail ?? err.message)
+            : 'Could not update follow.';
+        setError(detail);
+        toast.show(detail, { kind: 'error' });
       }
     });
   }
@@ -46,7 +51,7 @@ export function FollowSourceButton({ slug, initiallyFollowing }: Props) {
         className={
           following
             ? 'rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm hover:bg-[hsl(var(--muted))] disabled:opacity-50'
-            : 'rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50'
+            : 'rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50'
         }
       >
         {following ? 'Following' : 'Follow source'}

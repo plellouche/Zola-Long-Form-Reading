@@ -16,7 +16,7 @@ export default async function AdminInvitesPage() {
       </Link>
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">Invites</h1>
       <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-        Send a sign-in email to a specific address. They&rsquo;ll get a Longform invite from{' '}
+        Send a sign-in email to a specific address. They&rsquo;ll get a Zola invite from{' '}
         <code className="text-xs">onboarding@resend.dev</code> (or your configured Resend sender).
       </p>
 

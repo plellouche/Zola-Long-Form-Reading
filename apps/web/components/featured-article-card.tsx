@@ -55,7 +55,7 @@ export function FeaturedArticleCard({
             </span>
             <span className="ml-2">{article.source.name}</span>
           </div>
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+          <h2 className="font-serif text-3xl font-medium leading-tight tracking-tight sm:text-4xl">
             {article.title}
           </h2>
           {article.description && (

@@ -29,7 +29,7 @@ export function EmptyState({ title, body, icon, cta, children }: Props) {
       {cta && (
         <Link
           href={cta.href}
-          className="mt-4 rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))]"
+          className="mt-4 rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
         >
           {cta.label}
         </Link>

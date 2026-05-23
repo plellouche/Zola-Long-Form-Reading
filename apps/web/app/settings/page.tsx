@@ -25,7 +25,7 @@ export default async function SettingsPage() {
 
   return (
     <main className="mx-auto max-w-xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="font-serif text-4xl font-medium tracking-tight">Settings</h1>
       <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
         @{profile.username}
       </p>

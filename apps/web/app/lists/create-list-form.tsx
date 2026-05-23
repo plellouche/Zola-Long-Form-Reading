@@ -59,7 +59,7 @@ export function CreateListForm() {
       <button
         type="submit"
         disabled={!title.trim() || submitting}
-        className="rounded-md bg-[hsl(var(--foreground))] px-3 py-2 text-sm text-[hsl(var(--background))] disabled:opacity-50"
+        className="rounded-md bg-[hsl(var(--primary))] px-3 py-2 text-sm text-[hsl(var(--primary-foreground))] disabled:opacity-50"
       >
         {submitting ? 'Creating…' : 'Create list'}
       </button>

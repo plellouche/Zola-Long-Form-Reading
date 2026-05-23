@@ -98,7 +98,7 @@ export function ListSettings({ list }: { list: ReadingList }) {
         <button
           type="submit"
           disabled={busy || !title.trim()}
-          className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm text-[hsl(var(--background))] disabled:opacity-50"
+          className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm text-[hsl(var(--primary-foreground))] disabled:opacity-50"
         >
           Save
         </button>

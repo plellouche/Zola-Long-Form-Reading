@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { useToast } from '@/components/toast';
 import { getBrowserApiClient } from '@/lib/api';
 import { ApiError } from '@longform/api-client';
 
@@ -15,6 +16,7 @@ type Props = {
 
 export function SaveButton({ articleId, initiallySaved, variant = 'icon' }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [saved, setSaved] = useState(initiallySaved);
   const [pending, startTransition] = useTransition();
 
@@ -31,15 +33,18 @@ export function SaveButton({ articleId, initiallySaved, variant = 'icon' }: Prop
             method: 'POST',
             body: { status: 'SAVED' },
           });
+          toast.show('Saved');
         } else {
           await getBrowserApiClient().request(`/api/me/articles/${articleId}/state`, {
             method: 'DELETE',
           });
+          toast.show('Removed from saved', { kind: 'info' });
         }
         router.refresh();
       } catch (err) {
         // Revert on failure
         setSaved((s) => !s);
+        toast.show('Could not save', { kind: 'error' });
         if (!(err instanceof ApiError)) throw err;
       }
     });
@@ -53,7 +58,7 @@ export function SaveButton({ articleId, initiallySaved, variant = 'icon' }: Prop
         className={
           'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition disabled:opacity-50 ' +
           (saved
-            ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]'
+            ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
             : 'border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]')
         }
         aria-pressed={saved}

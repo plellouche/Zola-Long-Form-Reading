@@ -132,19 +132,21 @@ export default async function ArticlePage({
         ← Browse
       </Link>
 
-      <div className="mt-6 text-[11px] font-medium uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]">
-        <Link href={`/source/${article.source.slug}`} className="hover:text-[hsl(var(--foreground))] hover:underline">
+      <div className="mt-6 text-[11px] font-medium uppercase tracking-[0.18em] text-[hsl(var(--accent))]">
+        <Link href={`/source/${article.source.slug}`} className="hover:text-[hsl(var(--primary))] hover:underline">
           {article.source.name}
         </Link>
       </div>
 
-      <h1 className="mt-3 text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+      <h1 className="mt-3 font-serif text-4xl font-medium leading-[1.05] tracking-tight sm:text-5xl">
         {article.title}
       </h1>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[hsl(var(--muted-foreground))]">
         {article.author && (
-          <span className="font-medium text-[hsl(var(--foreground))]">{article.author}</span>
+          <span className="font-serif text-base italic text-[hsl(var(--foreground))]">
+            By {article.author}
+          </span>
         )}
         {date && <span>{date}</span>}
         {article.reading_time_minutes && (
@@ -168,7 +170,7 @@ export default async function ArticlePage({
       )}
 
       {article.description && (
-        <p className="mt-6 max-w-prose text-xl leading-relaxed text-[hsl(var(--muted-foreground))]">
+        <p className="drop-cap mt-8 max-w-prose font-serif text-xl leading-relaxed text-[hsl(var(--foreground))]">
           {stripHtml(article.description)}
         </p>
       )}

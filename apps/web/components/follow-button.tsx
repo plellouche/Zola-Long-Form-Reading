@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { useToast } from '@/components/toast';
 import { getBrowserApiClient } from '@/lib/api';
 import { ApiError } from '@longform/api-client';
 
@@ -13,6 +14,7 @@ type Props = {
 
 export function FollowButton({ username, initiallyFollowing }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [following, setFollowing] = useState(initiallyFollowing);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -26,15 +28,18 @@ export function FollowButton({ username, initiallyFollowing }: Props) {
         await getBrowserApiClient().request(`/api/users/${username}/follow`, {
           method: next ? 'POST' : 'DELETE',
         });
+        toast.show(next ? `Following @${username}` : `Unfollowed @${username}`, {
+          kind: next ? 'success' : 'info',
+        });
         router.refresh();
       } catch (err) {
         setFollowing(!next);
-        if (err instanceof ApiError) {
-          const detail = (err.body as { detail?: string } | null)?.detail;
-          setError(detail ?? err.message);
-        } else {
-          setError('Failed');
-        }
+        const detail =
+          err instanceof ApiError
+            ? ((err.body as { detail?: string } | null)?.detail ?? err.message)
+            : 'Failed';
+        setError(detail);
+        toast.show(detail, { kind: 'error' });
       }
     });
   }
@@ -50,7 +55,7 @@ export function FollowButton({ username, initiallyFollowing }: Props) {
           'rounded-md border px-4 py-1.5 text-sm transition disabled:opacity-50 ' +
           (following
             ? 'border-[hsl(var(--border))] hover:border-red-500/40 hover:text-red-600'
-            : 'border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]')
+            : 'border-[hsl(var(--foreground))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]')
         }
       >
         {following ? 'Following' : 'Follow'}

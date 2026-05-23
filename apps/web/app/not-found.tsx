@@ -11,7 +11,7 @@ export default function NotFound() {
       <div className="mt-6 flex justify-center gap-2">
         <Link
           href="/browse"
-          className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))]"
+          className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
         >
           Browse articles
         </Link>

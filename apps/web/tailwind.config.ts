@@ -8,7 +8,14 @@ const config: Config = {
     './lib/**/*.{ts,tsx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        // See DESIGN.md §4. CSS variables are wired in app/layout.tsx via next/font.
+        sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['var(--font-spectral)', 'ui-serif', 'Georgia', 'serif'],
+        display: ['var(--font-bagel)', 'ui-sans-serif', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 };

@@ -126,7 +126,7 @@ export function NewArticleForm({ sources, topics }: { sources: Source[]; topics:
             type="button"
             onClick={handleFetchDraft}
             disabled={draftLoading || !draftUrl.trim()}
-            className="mt-1 rounded-md bg-[hsl(var(--foreground))] px-3 py-2 text-sm text-[hsl(var(--background))] disabled:opacity-50"
+            className="mt-1 rounded-md bg-[hsl(var(--primary))] px-3 py-2 text-sm text-[hsl(var(--primary-foreground))] disabled:opacity-50"
           >
             {draftLoading ? 'Fetching…' : 'Fetch'}
           </button>
@@ -245,7 +245,7 @@ export function NewArticleForm({ sources, topics }: { sources: Source[]; topics:
                   className={
                     'rounded-full border px-3 py-1 text-xs transition ' +
                     (selected
-                      ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]'
+                      ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
                       : 'border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]')
                   }
                 >
@@ -260,7 +260,7 @@ export function NewArticleForm({ sources, topics }: { sources: Source[]; topics:
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+            className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
           >
             {submitting ? 'Saving…' : 'Create article'}
           </button>

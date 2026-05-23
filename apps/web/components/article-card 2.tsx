@@ -1,9 +1,7 @@
 import Link from 'next/link';
 
-import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
-import { stripHtml } from '@/lib/utils';
 
 export type ArticleCardData = Pick<
   ArticleSummary,
@@ -12,8 +10,8 @@ export type ArticleCardData = Pick<
 
 type Props = {
   article: ArticleCardData;
-  /** When provided, show the SaveButton + AddToList icon. Set by feed pages
-   *  once they know whether the viewer is signed in. */
+  /** When provided, show the SaveButton. Set by feed pages once they know
+   *  whether the viewer is signed in. */
   showSave?: boolean;
   initiallySaved?: boolean;
 };
@@ -30,14 +28,13 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
   return (
     <div className="group relative mb-4 break-inside-avoid">
       {showSave && (
-        <div className="absolute right-2 top-2 z-10 flex gap-1">
-          <AddToList articleId={article.id} variant="icon" />
+        <div className="absolute right-2 top-2 z-10">
           <SaveButton articleId={article.id} initiallySaved={initiallySaved} />
         </div>
       )}
       <Link
         href={`/article/${article.id}`}
-        className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md hover:border-[hsl(var(--foreground))]"
+        className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition hover:border-[hsl(var(--foreground))]"
       >
         {article.og_image_url && (
           <div className="overflow-hidden bg-[hsl(var(--muted))]">
@@ -51,13 +48,13 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
           </div>
         )}
         <div className="flex flex-col p-4">
-          <div className="text-[11px] font-medium uppercase tracking-[0.15em] text-[hsl(var(--accent))]">
+          <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
             {article.source.name}
           </div>
-          <h3 className="mt-2 font-serif text-lg font-medium leading-snug">{article.title}</h3>
+          <h3 className="mt-2 text-base font-semibold leading-snug">{article.title}</h3>
           {article.description && (
             <p className="mt-2 line-clamp-3 text-sm text-[hsl(var(--muted-foreground))]">
-              {stripHtml(article.description)}
+              {article.description}
             </p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">

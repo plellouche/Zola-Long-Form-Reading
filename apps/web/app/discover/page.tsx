@@ -20,7 +20,7 @@ export default async function DiscoverPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <header className="mb-6 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">Discover</h1>
+        <h1 className="font-serif text-4xl font-medium tracking-tight">Discover</h1>
         <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
           Swipe to train your feed.
         </p>

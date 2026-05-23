@@ -38,8 +38,11 @@ export async function NavBar() {
   return (
     <header className="border-b border-[hsl(var(--border))]">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
-        <Link href="/" className="text-base font-semibold tracking-tight">
-          Longform
+        <Link
+          href="/"
+          className="font-display text-[2.25rem] leading-none tracking-tight text-[hsl(var(--primary))]"
+        >
+          Zola
         </Link>
 
         <div className="hidden flex-1 md:block">
@@ -60,7 +63,7 @@ export async function NavBar() {
           {!user && (
             <Link
               href="/login"
-              className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-[hsl(var(--background))]"
+              className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-[hsl(var(--primary-foreground))]"
             >
               Sign in
             </Link>
@@ -109,7 +112,7 @@ export async function NavBar() {
           {user && !isOnboarded && (
             <Link
               href="/onboarding"
-              className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-[hsl(var(--background))]"
+              className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-[hsl(var(--primary-foreground))]"
             >
               Finish setup
             </Link>

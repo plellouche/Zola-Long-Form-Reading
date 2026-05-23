@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zola — Chunk-style wordmarks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600&family=Bagel+Fat+One&family=Modak&family=Lilita+One&family=Lalezar&family=Shrikhand&family=Bowlby+One&family=Inter:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #14181B;
+    color: #ddd;
+    padding: 32px 24px;
+    min-height: 100vh;
+  }
+  .page-header {
+    max-width: 1400px;
+    margin: 0 auto 32px;
+    text-align: center;
+  }
+  .page-header h1 { font-size: 28px; margin-bottom: 8px; }
+  .page-header p { color: #888; font-size: 14px; max-width: 700px; margin: 0 auto; }
+  .palette-bar {
+    display: flex; gap: 12px; justify-content: center; margin: 20px auto 0;
+    flex-wrap: wrap;
+  }
+  .swatch {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-family: ui-monospace, "SF Mono", monospace;
+  }
+  .swatch-chip {
+    width: 24px; height: 24px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .theme-card {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  .theme-label {
+    padding: 14px 20px;
+    background: #1F2428;
+    color: #f0f0f0;
+    font-family: system-ui;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .theme-body {
+    background: #FAFAF8;
+    color: #14242E;
+    font-family: 'Inter', sans-serif;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+  }
+  .nav-mock {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 28px;
+    border-bottom: 1px solid #ECE7DA;
+  }
+  .nav-mock .wordmark-nav { color: #22577A; }
+  .nav-links {
+    font-size: 13px;
+    display: flex;
+    gap: 18px;
+    color: #14242E;
+    font-family: 'Inter', sans-serif;
+  }
+  .nav-links .active { font-weight: 600; color: #22577A; }
+  .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px 28px 16px;
+    text-align: center;
+  }
+  .hero .wordmark-hero {
+    color: #22577A;
+    line-height: 0.85;
+  }
+  .hero .tagline {
+    font-family: 'Spectral', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: #5C6B73;
+    margin-top: 4px;
+  }
+  .context-row {
+    padding: 16px 28px;
+    border-top: 1px solid #ECE7DA;
+    background: #F5F2EA;
+  }
+  .context-row .card-title {
+    font-family: 'Spectral', serif;
+    font-size: 18px;
+    font-weight: 500;
+    color: #14242E;
+    line-height: 1.2;
+  }
+  .context-row .card-source {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #40916C;
+    margin-bottom: 4px;
+  }
+  .spec {
+    padding: 14px 28px;
+    background: #F1EEE6;
+    border-top: 1px dashed #C9D0CE;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: #6B7B82;
+  }
+
+  /* Per-option chunky wordmarks. Letter-spacing tightened so they don't
+     read airy — chunk faces want tight tracking. */
+
+  .opt-bagel .wordmark-nav { font-family: 'Bagel Fat One', sans-serif; font-size: 28px; letter-spacing: 0; }
+  .opt-bagel .wordmark-hero { font-family: 'Bagel Fat One', sans-serif; font-size: 150px; letter-spacing: 0; }
+
+  .opt-modak .wordmark-nav { font-family: 'Modak', sans-serif; font-size: 32px; letter-spacing: 0; }
+  .opt-modak .wordmark-hero { font-family: 'Modak', sans-serif; font-size: 160px; letter-spacing: 0; }
+
+  .opt-lilita .wordmark-nav { font-family: 'Lilita One', sans-serif; font-size: 32px; letter-spacing: -0.01em; }
+  .opt-lilita .wordmark-hero { font-family: 'Lilita One', sans-serif; font-size: 170px; letter-spacing: -0.025em; }
+
+  .opt-lalezar .wordmark-nav { font-family: 'Lalezar', sans-serif; font-size: 32px; letter-spacing: -0.01em; }
+  .opt-lalezar .wordmark-hero { font-family: 'Lalezar', sans-serif; font-size: 170px; letter-spacing: -0.02em; }
+
+  .opt-shrikhand .wordmark-nav { font-family: 'Shrikhand', serif; font-size: 28px; letter-spacing: -0.005em; }
+  .opt-shrikhand .wordmark-hero { font-family: 'Shrikhand', serif; font-size: 140px; letter-spacing: -0.015em; }
+
+  .opt-bowlby .wordmark-nav { font-family: 'Bowlby One', sans-serif; font-size: 28px; letter-spacing: -0.005em; }
+  .opt-bowlby .wordmark-hero { font-family: 'Bowlby One', sans-serif; font-size: 150px; letter-spacing: -0.02em; }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <h1>Zola — Chunk-style wordmarks</h1>
+  <p>Six fat, rounded, free Google Fonts that approach the &ldquo;Chunk&rdquo; aesthetic from your reference. Body still <b>Spectral</b>.</p>
+  <div class="palette-bar">
+    <div class="swatch"><span class="swatch-chip" style="background:#FAFAF8;border-color:#ddd"></span>#FAFAF8 BG</div>
+    <div class="swatch"><span class="swatch-chip" style="background:#22577A"></span>#22577A wordmark</div>
+    <div class="swatch"><span class="swatch-chip" style="background:#40916C"></span>#40916C accent</div>
+    <div class="swatch"><span class="swatch-chip" style="background:#14242E"></span>#14242E ink</div>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- 1. BAGEL FAT ONE -->
+  <article class="theme-card opt-bagel">
+    <div class="theme-label">1 · Bagel Fat One — closest to your reference</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Bagel Fat One</b> — extreme stroke weight, rounded terminals, single design weight.<br>
+        Almost a direct match for the Chunk reference. My pick.
+      </div>
+    </div>
+  </article>
+
+  <!-- 2. MODAK -->
+  <article class="theme-card opt-modak">
+    <div class="theme-label">2 · Modak — extra wide chunk, slightly squished</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Modak</b> — even heavier and wider than Bagel. Letters feel almost cartoon-stamp.<br>
+        Strongest "stamp" feel. Boldest of the set.
+      </div>
+    </div>
+  </article>
+
+  <!-- 3. LILITA ONE -->
+  <article class="theme-card opt-lilita">
+    <div class="theme-label">3 · Lilita One — slightly more restrained chunk</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Lilita One</b> — heavy rounded sans, more legible at smaller sizes than Bagel/Modak.<br>
+        Closest to the &ldquo;Mokoto/Cooper Black-lite&rdquo; flavor. Friendly without being a stamp.
+      </div>
+    </div>
+  </article>
+
+  <!-- 4. LALEZAR -->
+  <article class="theme-card opt-lalezar">
+    <div class="theme-label">4 · Lalezar — chunky with subtle asymmetry</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Lalezar</b> — chunky display with visible variation in stroke width and letterform proportions.<br>
+        More asymmetric than Lilita; less stamp-y than Bagel.
+      </div>
+    </div>
+  </article>
+
+  <!-- 5. SHRIKHAND -->
+  <article class="theme-card opt-shrikhand">
+    <div class="theme-label">5 · Shrikhand — chunky with slab-serif personality</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Shrikhand</b> — chunky display with little slab-serif feet. Visible warmth and character.<br>
+        Indie-product / craft-brand energy. Pairs interestingly with a serif body.
+      </div>
+    </div>
+  </article>
+
+  <!-- 6. BOWLBY ONE -->
+  <article class="theme-card opt-bowlby">
+    <div class="theme-label">6 · Bowlby One — heavy rounded, more disciplined</div>
+    <div class="theme-body">
+      <div class="nav-mock">
+        <div class="wordmark-nav">Zola</div>
+        <div class="nav-links">
+          <span>Browse</span><span class="active">Discover</span><span>Lists</span>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="wordmark-hero">Zola</div>
+        <div class="tagline">Essays worth your evening.</div>
+      </div>
+      <div class="context-row">
+        <div>
+          <div class="card-source">Aeon · May 12, 2026</div>
+          <div class="card-title">The quiet revolution of slow reading</div>
+        </div>
+      </div>
+      <div class="spec">
+        <b>Bowlby One</b> — heavy rounded sans, more geometrically disciplined than Bagel.<br>
+        Strong but feels more brand-design than poster-design.
+      </div>
+    </div>
+  </article>
+
+</main>
+
+<footer style="max-width: 1400px; margin: 32px auto 0; text-align: center; font-size: 12px; color: #666;">
+  Pick by number. The closest direct match to your Chunk reference is #1.
+</footer>
+
+</body>
+</html>

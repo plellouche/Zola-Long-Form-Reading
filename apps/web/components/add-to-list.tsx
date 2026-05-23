@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import { useToast } from '@/components/toast';
 import { getBrowserApiClient } from '@/lib/api';
 import type { ReadingList } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
@@ -19,6 +20,7 @@ type Mode = 'idle' | 'open';
 
 export function AddToList({ articleId, variant = 'pill' }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [mode, setMode] = useState<Mode>('idle');
   const [lists, setLists] = useState<ReadingList[] | null>(null);
   const [busyListId, setBusyListId] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export function AddToList({ articleId, variant = 'pill' }: Props) {
   }
 
   async function addToList(listId: string) {
+    const list = lists?.find((l) => l.id === listId);
     setBusyListId(listId);
     setError(null);
     try {
@@ -69,14 +72,15 @@ export function AddToList({ articleId, variant = 'pill' }: Props) {
         body: { article_id: articleId },
       });
       setMode('idle');
+      toast.show(`Added to ${list?.title ?? 'list'}`);
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiError) {
-        const detail = (err.body as { detail?: string } | null)?.detail;
-        setError(detail ?? err.message);
-      } else {
-        setError('Failed to add');
-      }
+      const detail =
+        err instanceof ApiError
+          ? ((err.body as { detail?: string } | null)?.detail ?? err.message)
+          : 'Failed to add';
+      setError(detail);
+      toast.show(detail, { kind: 'error' });
     } finally {
       setBusyListId(null);
     }
@@ -86,10 +90,11 @@ export function AddToList({ articleId, variant = 'pill' }: Props) {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setError(null);
+    const intendedTitle = newTitle.trim();
     try {
       const created = await getBrowserApiClient().request<ReadingList>('/api/lists', {
         method: 'POST',
-        body: { title: newTitle.trim() },
+        body: { title: intendedTitle },
       });
       await getBrowserApiClient().request(`/api/lists/${created.id}/items`, {
         method: 'POST',
@@ -99,9 +104,12 @@ export function AddToList({ articleId, variant = 'pill' }: Props) {
       // Reset cached lists so the next open re-fetches and shows the new one.
       setLists(null);
       setMode('idle');
+      toast.show(`Created “${intendedTitle}” and added article`);
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create list');
+      const detail = err instanceof ApiError ? err.message : 'Failed to create list';
+      setError(detail);
+      toast.show(detail, { kind: 'error' });
     }
   }
 
@@ -179,7 +187,7 @@ export function AddToList({ articleId, variant = 'pill' }: Props) {
               <button
                 type="submit"
                 disabled={!newTitle.trim()}
-                className="rounded-md bg-[hsl(var(--foreground))] px-2 py-1 text-xs text-[hsl(var(--background))] disabled:opacity-50"
+                className="rounded-md bg-[hsl(var(--primary))] px-2 py-1 text-xs text-[hsl(var(--primary-foreground))] disabled:opacity-50"
               >
                 Create
               </button>

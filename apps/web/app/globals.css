@@ -2,40 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-/* next-themes adds `class="light"` or `class="dark"` to <html>. We define both
- * variants and let the theme class win over the media-query fallback. The
- * media query stays so SSR (where the class isn't set yet) doesn't flash the
- * wrong palette on first paint. */
+/* See DESIGN.md §3. The brand palette: warm-white paper, deep teal ink, sea-green
+ * accent. next-themes adds `class="light"` or `class="dark"` to <html>; both are
+ * defined here. The @media prefers-color-scheme block is the SSR fallback so we
+ * don't flash the wrong palette on first paint. */
 
 :root,
 .light {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 9%;
-  --muted: 0 0% 96%;
-  --muted-foreground: 0 0% 45%;
-  --border: 0 0% 90%;
+  --background: 60 14% 96%;          /* #FAFAF8 warm white */
+  --foreground: 204 41% 13%;         /* #14242E deep ink */
+  --muted: 40 21% 92%;               /* #F1EEE6 paper edge */
+  --muted-foreground: 202 12% 41%;   /* #5C6B73 cool gray */
+  --border: 39 24% 89%;              /* #ECE7DA soft cream edge */
+  --primary: 204 56% 31%;            /* #22577A deep ocean teal */
+  --primary-foreground: 60 14% 96%;  /* #FAFAF8 warm white */
+  --accent: 154 39% 41%;             /* #40916C sea green */
+  --accent-soft: 150 24% 90%;        /* #E0EBE5 faint green wash */
 }
 
 .dark {
-  --background: 0 0% 9%;
-  --foreground: 0 0% 98%;
-  --muted: 0 0% 14%;
-  --muted-foreground: 0 0% 64%;
-  --border: 0 0% 20%;
+  --background: 200 41% 9%;          /* #0E1A22 deep ink */
+  --foreground: 38 50% 86%;          /* #E8DECB warm cream */
+  --muted: 200 32% 15%;              /* #1A2A33 slightly raised */
+  --muted-foreground: 206 14% 62%;   /* #93A2AC cool gray */
+  --border: 204 31% 17%;             /* #1F2F3A ink edge */
+  --primary: 204 56% 31%;            /* #22577A — unchanged */
+  --primary-foreground: 60 14% 96%;  /* #FAFAF8 */
+  --accent: 154 44% 59%;             /* #6BC4A0 lighter sea green for AA contrast */
+  --accent-soft: 200 32% 15%;        /* #1A2A33 deep teal-tinged */
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --background: 0 0% 9%;
-    --foreground: 0 0% 98%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 64%;
-    --border: 0 0% 20%;
+    --background: 200 41% 9%;
+    --foreground: 38 50% 86%;
+    --muted: 200 32% 15%;
+    --muted-foreground: 206 14% 62%;
+    --border: 204 31% 17%;
+    --primary: 204 56% 31%;
+    --primary-foreground: 60 14% 96%;
+    --accent: 154 44% 59%;
+    --accent-soft: 200 32% 15%;
   }
 }
 
 html, body {
   @apply min-h-screen;
   background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Drop cap for the article body's first paragraph. Component opts in by
+ * adding the `drop-cap` class. See DESIGN.md §7 — used sparingly. */
+.drop-cap::first-letter {
+  font-family: var(--font-spectral), Georgia, serif;
+  float: left;
+  font-size: 4em;
+  line-height: 0.9;
+  padding: 0.15em 0.15em 0 0;
+  font-weight: 500;
   color: hsl(var(--foreground));
 }

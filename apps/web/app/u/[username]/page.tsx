@@ -40,7 +40,7 @@ export async function generateMetadata({
     const displayName = profile.display_name ?? `@${profile.username}`;
     return {
       title: displayName,
-      description: profile.bio ?? `${displayName}'s public lists and reading on Longform.`,
+      description: profile.bio ?? `${displayName}'s public lists and reading on Zola.`,
       openGraph: { title: displayName, description: profile.bio ?? '', type: 'profile' },
     };
   } catch {
@@ -113,7 +113,7 @@ export default async function PublicProfilePage({
             size="xl"
           />
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
+            <h1 className="font-serif text-4xl font-medium tracking-tight">
               {profile.display_name ?? `@${profile.username}`}
             </h1>
             <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">

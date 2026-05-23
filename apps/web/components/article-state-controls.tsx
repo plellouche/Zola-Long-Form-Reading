@@ -66,7 +66,7 @@ export function ArticleStateControls({ articleId, initialStatus }: Props) {
               className={
                 'rounded-md border px-3 py-1.5 text-sm transition disabled:opacity-50 ' +
                 (active
-                  ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]'
+                  ? 'border-[hsl(var(--foreground))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
                   : 'border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]')
               }
             >

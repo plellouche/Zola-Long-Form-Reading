@@ -21,7 +21,7 @@ export async function generateMetadata({
     );
     return {
       title: src.name,
-      description: `Recent longform articles from ${src.name} on Longform.`,
+      description: `Recent long-form articles from ${src.name} on Zola.`,
       openGraph: { title: src.name, type: 'website' },
     };
   } catch {
@@ -68,7 +68,7 @@ export default async function SourceDetailPage({
 
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{source.name}</h1>
+          <h1 className="font-serif text-4xl font-medium tracking-tight">{source.name}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
             <a
               href={source.homepage_url}

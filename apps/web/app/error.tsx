@@ -25,7 +25,7 @@ export default function RootError({
         <button
           type="button"
           onClick={() => reset()}
-          className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))]"
+          className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
         >
           Try again
         </button>

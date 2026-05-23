@@ -40,19 +40,20 @@ export default async function HomePage() {
 
   if (!user) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-12">
+      <main className="mx-auto max-w-5xl px-6 py-16">
         <section className="max-w-3xl">
-          <h1 className="text-4xl font-semibold tracking-tight">
-            Discover long-form essays worth your time.
+          <p className="font-display text-base tracking-tight text-[hsl(var(--primary))]">Zola</p>
+          <h1 className="mt-4 font-serif text-5xl font-medium leading-[1.05] tracking-tight">
+            Essays worth your evening.
           </h1>
-          <p className="mt-4 text-lg text-[hsl(var(--muted-foreground))]">
-            A high-signal library of essays, trip reports, and literary nonfiction. Save what you
-            mean to read. Build lists. Follow people whose taste you trust.
+          <p className="mt-6 max-w-prose font-serif text-xl leading-relaxed text-[hsl(var(--muted-foreground))]">
+            A high-signal library of essays, reporting, and criticism. Save what you mean to
+            read. Build lists. Follow people whose taste you trust.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/browse"
-              className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))]"
+              className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
             >
               Browse articles
             </Link>
@@ -90,7 +91,7 @@ export default async function HomePage() {
       <section>
         <header className="flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">For you</h1>
+            <h1 className="font-serif text-3xl font-medium tracking-tight">For you</h1>
             <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
               Scored on your saves, finishes, and topic picks.
             </p>
@@ -135,7 +136,7 @@ export default async function HomePage() {
 
       <section className="mt-16">
         <header>
-          <h2 className="text-xl font-semibold tracking-tight">From people you follow</h2>
+          <h2 className="font-serif text-3xl font-medium tracking-tight">From people you follow</h2>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
             Recent saves and list additions from your social graph.
           </p>

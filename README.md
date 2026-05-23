@@ -1,6 +1,8 @@
-# Longform Reading App
+# Zola
 
-Pinterest-for-long-form-reading. See `COMMAND_CENTER.md` for the full design.
+A discovery surface for long-form essays, reporting, and criticism. The user-facing app is "Zola"; the repository folder and package names remain `longform`/`@longform/*` (codebase rename is a separate, larger refactor — see `ROADMAP.md`).
+
+See `COMMAND_CENTER.md` for the architecture and `DESIGN.md` for the visual identity.
 
 ## Quickstart (local dev)
 

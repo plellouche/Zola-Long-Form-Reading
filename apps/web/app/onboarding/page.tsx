@@ -34,7 +34,7 @@ export default async function OnboardingPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Welcome to Longform</h1>
+      <h1 className="font-serif text-4xl font-medium tracking-tight">Welcome to Zola</h1>
       <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
         Pick a username and a few topics you&rsquo;d like to read about. You can change these later.
       </p>

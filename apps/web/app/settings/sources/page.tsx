@@ -73,7 +73,7 @@ export default async function AdminSourcesPage() {
           </Link>
           <Link
             href="/settings/articles/new"
-            className="rounded-md bg-[hsl(var(--foreground))] px-3 py-1.5 text-sm text-[hsl(var(--background))]"
+            className="rounded-md bg-[hsl(var(--primary))] px-3 py-1.5 text-sm text-[hsl(var(--primary-foreground))]"
           >
             + New article
           </Link>

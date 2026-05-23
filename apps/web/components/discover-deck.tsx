@@ -210,7 +210,7 @@ function FinishedState({
         <button
           onClick={onLoadMore}
           disabled={loading}
-          className="rounded-md bg-[hsl(var(--foreground))] px-4 py-2 text-sm font-medium text-[hsl(var(--background))] disabled:opacity-50"
+          className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
         >
           {loading ? 'Loading…' : 'Load more'}
         </button>
@@ -337,7 +337,7 @@ function CardContent({ article }: { article: ArticleSummary }) {
             <span> · {article.reading_time_minutes} min</span>
           )}
         </div>
-        <h2 className="text-2xl font-semibold leading-tight tracking-tight">
+        <h2 className="font-serif text-3xl font-medium leading-tight tracking-tight">
           {article.title}
         </h2>
         {article.author && (
