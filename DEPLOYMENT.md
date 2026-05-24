@@ -2,14 +2,14 @@
 
 > Operational reference for deploying and re-deploying Zola to production. Pairs with `ROADMAP.md` (strategy) and `PROGRESS.md` (history). When operations change, update this file.
 
-## ⚠️ Carry-forward TODOs (deferred during Phase 12)
+## ⚠️ Carry-forward TODOs (deferred but live to remember)
 
 These are intentionally-deferred items that will eventually need to happen. Marked here at the top of the doc so they don't get lost in the bigger sections below.
 
+- **Vercel GitHub auto-deploy is NOT connected.** We created the Vercel project via `vercel link` from the CLI — that flow does not auto-wire the GitHub integration. Pushes to `main` do not trigger deploys; every deploy currently requires `cd "/Users/paul/Documents/Long Form Reading App" && npx vercel --prod --yes`. One-time fix: Vercel dashboard → project `zola` → Settings → Git → "Connect Git Repository" → pick `plellouche/Zola-Long-Form-Reading`. Skipped for now because manual deploys are working fine and the change has its own small risk of misconfiguration.
 - **Vercel Preview env vars** — not set. Means PR-preview deploys build but break at runtime. Re-enable when adopting a PR-based workflow. See [§ Pull-request previews](#pull-request-previews-deferred--re-enable-later) for the exact 3-step recipe.
 - **Render free → Starter ($7/mo)** — switch when the keep-awake hack becomes insufficient or the first user complains about cold-start latency. The keep-Render-awake GH workflow becomes redundant on Starter — delete it then.
 - **Separate Supabase project for previews** — if PR previews matter, you'll want one. Production and preview currently share a database, so risky PR work could corrupt prod data.
-- **Custom Supabase email provider** — Supabase free-tier email is heavily rate-limited (current sign-in OTP issue). Once Phase 11 moves us to password auth this matters less, but if you keep email-based flows, hook up a Resend/Postmark sender via Supabase Auth settings → SMTP.
 - **Sentry / error tracking** — Phase 17 territory; trigger is the first real user-visible error you didn't catch in logs.
 
 ## Topology
@@ -32,24 +32,27 @@ These are intentionally-deferred items that will eventually need to happen. Mark
                   (ingestion cron)
 ```
 
-- **Vercel** hosts the Next.js app (`apps/web`). Auto-deploys on push to `main`.
-- **Render** (planned, not yet set up) will host the FastAPI app (`services/api`).
-- **Supabase** is the source of truth for Postgres data, Auth, and Storage (avatars).
-- **GitHub Actions** runs the RSS ingestion cron and writes directly to Supabase.
+- **Vercel** hosts the Next.js app (`apps/web`). Manual deploys via `npx vercel --prod --yes` from the repo root — see the Carry-forward TODOs note above about reconnecting GitHub auto-deploy.
+- **Render** hosts the FastAPI app (`services/api`) at `api.zolalongform.com`. Auto-deploys on push to `main` (the Render blueprint at the repo root has `autoDeploy: true`).
+- **Supabase** is the source of truth for Postgres data, Auth, and Storage (avatars). Auth emails are sent via Resend custom SMTP — see "Email delivery via Resend" below.
+- **GitHub Actions** runs the RSS ingestion cron and writes directly to Supabase. A second workflow pings the Render API every 10 minutes to keep the free tier awake.
 
 ## Current production state
 
 | Component | Status | URL / Reference |
 |---|---|---|
-| Frontend (Vercel) | ✅ deployed | `https://zolalongform.com` |
-| Custom domain | ✅ live on GoDaddy DNS | `zolalongform.com` (apex A + www CNAME → Vercel) |
-| SSL cert | ✅ issued | Let's Encrypt, auto-renewed by Vercel |
-| Backend (Render) | ❌ not yet deployed | planned at `api.zolalongform.com` |
-| Supabase Auth — Site URL | ⚠️ still `localhost` | needs update to `https://zolalongform.com` |
-| Supabase Auth — Redirect URLs | ⚠️ still `localhost` | add `https://zolalongform.com/**` |
-| FastAPI CORS `allow_origins` | ⚠️ still `["http://localhost:3000"]` | needs `https://zolalongform.com` before Render deploy |
-| `NEXT_PUBLIC_API_URL` (Vercel) | ⚠️ placeholder | swap to `https://api.zolalongform.com` once Render is live |
-| Vercel Preview env vars | ❌ not set | PR previews will fail until added via dashboard |
+| Frontend (Vercel) | ✅ live | `https://zolalongform.com` |
+| Backend (Render) | ✅ live | `https://api.zolalongform.com` (Render free tier; kept warm by GH Actions workflow) |
+| Custom domains | ✅ live on GoDaddy DNS | Apex A + `www` CNAME → Vercel; `api` CNAME → Render |
+| SSL certs | ✅ issued | Let's Encrypt on Vercel (apex) and Render (api subdomain) |
+| Supabase Auth — Site URL | ✅ | `https://zolalongform.com` |
+| Supabase Auth — Redirect URLs | ✅ | `https://zolalongform.com/**`, `https://zolalongform.com/auth/callback` |
+| FastAPI CORS `allow_origins` | ✅ | includes `https://zolalongform.com`, `https://www.zolalongform.com`, the Vercel alias, and a regex for preview deploys |
+| `NEXT_PUBLIC_API_URL` (Vercel) | ✅ | `https://api.zolalongform.com` |
+| Email delivery (Resend custom SMTP) | ✅ live | from `noreply@zolalongform.com` (sender name "Zola Longform"); domain verified — see "Email delivery via Resend" below |
+| Keep-Render-awake GH Action | ✅ running | pings `/healthz` every 10 min via `RENDER_API_URL` secret |
+| Vercel GitHub auto-deploy | ❌ NOT connected | manual `npx vercel --prod --yes` required; see Carry-forward TODOs |
+| Vercel Preview env vars | ❌ not set | PR previews build but break at runtime; see "Pull-request previews" below |
 
 ## Vercel project facts
 
@@ -59,6 +62,37 @@ These are intentionally-deferred items that will eventually need to happen. Mark
 - **Framework**: Next.js (auto-detected; Vercel walks up to install the pnpm workspace from the repo root)
 - **Build / install / output**: all defaults — no `vercel.json` in the repo
 - **Local link**: `.vercel/project.json` at the repo root (gitignored)
+
+## Email delivery via Resend
+
+All Supabase Auth emails (sign-up confirmation, password reset, magic-link OTP fallback) ship via a Resend SMTP integration. Replaces Supabase's built-in sender, which is heavily rate-limited and tends to land in spam.
+
+| Setting | Value |
+|---|---|
+| Resend account owner | `pllch@umich.edu` |
+| Verified domain | `zolalongform.com` (US-East region) at https://resend.com/domains |
+| DNS records | DKIM (`resend._domainkey`), MX (`send`), SPF (`send v=spf1 …`) — added at GoDaddy via Resend's Auto-Configure |
+| Supabase SMTP host | `smtp.resend.com` |
+| Port | `465` (SMTPS) |
+| Username | `resend` |
+| Password | Resend API key (`re_…`) — never stored in repo; lives only in Supabase project settings |
+| Sender email | `noreply@zolalongform.com` |
+| Sender name | `Zola Longform` |
+| Minimum interval per user | 60s (Supabase setting; rate-limits per-recipient at the Supabase layer before the email hits Resend) |
+| Free-tier limits | Resend 100 emails/day — plenty for invite-only |
+
+### What to update if you change domain or rotate the API key
+
+1. Re-verify domain at https://resend.com/domains.
+2. Generate a new API key in Resend → Settings → API Keys.
+3. Update Supabase Auth → Emails → SMTP password field with the new key.
+4. Send a test (`/forgot-password` on prod) to confirm delivery.
+
+### What to do if email delivery breaks
+
+1. Check Supabase Auth logs: https://supabase.com/dashboard/project/rkyephzcumidqnhqmhfw/logs/auth-logs — filter for "Error sending recovery email". The error text is verbose and usually names the root cause (DNS, rate limit, sandbox mode, etc.).
+2. Check Resend logs: https://resend.com/logs — every send attempt shows up, with delivery status.
+3. Common causes seen so far: Resend left in sandbox mode (only owner email gets delivered — fix by verifying domain), domain DKIM record missing or rotated (fix by re-verifying at Resend), Supabase rate limit hit (~3 reset emails/hour per user on free tier).
 
 ## Frequent operations
 
@@ -76,7 +110,7 @@ npx vercel --prod --yes
 npx vercel --yes
 ```
 
-`git push origin main` also triggers a production deploy via the GitHub integration. Use the CLI when you want to deploy a working-copy snapshot without committing.
+**Pushes to `main` do NOT auto-deploy to Vercel** — the GitHub integration was never connected (see Carry-forward TODOs at the top). Render auto-deploys on push, but Vercel needs the manual `npx vercel --prod --yes` command above each time. To restore the expected push-to-deploy behavior, go to Vercel → Settings → Git → Connect Git Repository.
 
 ### Inspect a deploy
 
@@ -132,9 +166,9 @@ npx vercel env pull .env.production.local --environment=production --yes
 
 `.env.production.local` is already gitignored by Next.js conventions.
 
-## Remaining work to finish Phase 12
+## Phase 12 setup steps (historical reference — all complete)
 
-In order. Each step assumes the previous one succeeded.
+> Kept as documentation for what was actually done, in case any of it needs to be redone (rotating credentials, re-creating a service, etc.). All steps below are shipped — see the "Current production state" table above.
 
 ### 1. Add CORS for the Vercel URL
 
@@ -252,10 +286,15 @@ Once you've bought a domain (`zola.app`, etc.):
 
 ## Known gotchas (encountered, documented for next time)
 
+- **Vercel GitHub auto-deploy is NOT connected.** Pushes to `main` do not trigger Vercel deploys — every deploy needs `npx vercel --prod --yes`. The CLI-based `vercel link` flow doesn't auto-wire the integration. One-time fix: Vercel dashboard → Settings → Git → Connect Git Repository.
 - **Vercel CLI v54 + Preview env vars**: `vercel env add NAME preview --yes` requires a TTY for the "which git branch?" prompt even when `--yes` is passed. The non-interactive form errors with `git_branch_required`. Workaround: use the dashboard for preview env vars.
 - **Monorepo with `apps/web` Root Directory**: Vercel needs to find Next.js in the deploy directory's `package.json`. Setting Root Directory to the repo root fails with "No Next.js version detected." Correct config is Root Directory = `apps/web`, and Vercel auto-detects the pnpm workspace from the repo root because of `pnpm-workspace.yaml`.
 - **`dotenv-cli` in build scripts**: the `apps/web/package.json` build script (`dotenv -e ../../.env -- next build`) doesn't work on Vercel because the `.env` file isn't there. Vercel auto-detection bypasses this by running `next build` directly. If you ever need to override Build Command, it's just `next build` (no dotenv wrapper).
 - **Env-var changes don't trigger redeploys**: must explicitly `npx vercel --prod --yes` (or push a new commit).
+- **Supabase pooler URL needed on Render (IPv6 trap)**: Supabase's direct database URL (`db.<ref>.supabase.co:5432`) is IPv6-only as of 2024; Render's outbound is IPv4-only on most plans, so the API can't reach the DB through the direct URL. Use the **Session pooler** URL instead (`aws-1-us-east-2.pooler.supabase.com:5432`, format `postgresql+asyncpg://postgres.<ref>:<password>@…`). Transaction pooler (port 6543) does NOT work — it lacks prepared statements which SQLAlchemy + asyncpg requires.
+- **Password-reset link prefetch (Proofpoint, Defender, Mimecast)**: corporate / university email scanners prefetch every URL in inbound mail to scan for phishing. They consume one-time-use Supabase PKCE recovery tokens before the user can click, so the reset flow dies with "invalid or expired".
+  - **Workaround currently in place**: `apps/web/middleware.ts` catches `/?code=<uuid>` at the apex and forwards to `/auth/callback?next=/auth/reset-password`. The reset-password page handles the post-callback session correctly. **Don't delete this middleware code thinking it's dead** — it's load-bearing for UMich / corporate users.
+  - **Better long-term fix**: render `{{ .Token }}` (a 6-digit code) instead of `{{ .ConfirmationURL }}` in the Supabase Reset Password template, so the email contains no clickable link at all. Our `/forgot-password` page already supports the code-paste path. Not adopted yet because the link-click UX is more familiar for most users.
 
 ## Cost expectations
 
@@ -286,7 +325,7 @@ For Render, redeploy a previous commit by clicking through the dashboard's deplo
 
 ## Pull-request previews (DEFERRED — re-enable later)
 
-**Current state**: every PR builds, but the build will fail at runtime because the **Preview** environment is missing all three `NEXT_PUBLIC_*` env vars. We deliberately deferred this — the Vercel CLI v54 has a bug that blocks adding Preview env vars non-interactively (see the gotchas section). Production-only deploys work fine via `git push origin main`.
+**Current state**: PR builds would fail at runtime because the **Preview** environment is missing all three `NEXT_PUBLIC_*` env vars. We deliberately deferred this — the Vercel CLI v54 has a bug that blocks adding Preview env vars non-interactively (see the gotchas section). Note also that the Vercel GitHub integration is not connected (separate carry-forward TODO), so PR pushes don't even trigger preview builds today.
 
 ### When to re-enable
 - You start using a feature-branch workflow with PRs (instead of pushing straight to `main`)
@@ -305,7 +344,7 @@ For Render, redeploy a previous commit by clicking through the dashboard's deplo
 4. (Optional, recommended later) For real isolation, create a **separate Supabase project** for previews so PR experimentation can't corrupt production data. Then point the Preview `NEXT_PUBLIC_SUPABASE_URL` at that staging project instead.
 
 ### Implications
-- Until re-enabled, **don't open PRs you intend to test from a Vercel preview** — they'll build but the runtime will throw on missing env vars. Push directly to `main` for now.
+- Until re-enabled, **don't open PRs expecting a Vercel preview** — they won't even build (no GitHub auto-deploy), and even if they did, the runtime would throw on missing env vars. For now, push to `main` then `npx vercel --prod --yes`.
 - The keep-Render-awake workflow doesn't care about previews; it only pings the production API.
 
 ## Future: switch to Pro
@@ -321,4 +360,4 @@ Trigger to upgrade Render from Free to Starter ($7/mo):
 
 ---
 
-*Last updated: 2026-05-23, immediately after first Vercel deploy.*
+*Last updated: 2026-05-24, after Phase 11 + Phase 12 close-out (Render live, Resend SMTP configured, end-to-end auth verified on production).*

@@ -239,4 +239,46 @@ Plus a small dependency add: `@zxcvbn-ts/core` + `@zxcvbn-ts/language-common` + 
 
 ---
 
-*Pending decisions in §1 before implementation starts. Reply with picks and I'll begin Step 1.*
+## 9. Post-ship notes (2026-05-24)
+
+This section is the after-action; everything above is the plan as it was.
+
+### Decisions resolved (from §1)
+- **Email confirmation**: OFF, as proposed. Signup → immediately signed in.
+- **OAuth (Google / GitHub)**: deferred to Phase 11.5.
+- **Password complexity**: minimum 12 characters + zxcvbn score ≥ 2. No character-class rules.
+
+### Unexpected work item: Proofpoint URL-prefetch
+
+Discovered during the production smoke test on a UMich email address (`pllch@umich.edu`). Reset emails arrived but every link click failed with "invalid or expired" even when the email was 30 seconds old.
+
+**Cause**: UMich's Proofpoint scanner (and Microsoft Defender, Mimecast, etc. on other corporate inboxes) prefetches every URL in inbound mail to scan for phishing. The Supabase PKCE recovery token in `?code=<uuid>` is one-time-use — by the time the user clicks, the scanner has already exchanged it.
+
+**Workaround shipped**: a small block in `apps/web/middleware.ts` catches `/?code=<uuid>` at the apex and forwards to `/auth/callback?next=/auth/reset-password`. The existing `/auth/callback` route exchanges the code server-side and the reset-password page picks up the resulting session. Transparent to the user; Proofpoint sees the home page (no code exchange happens unless the *user* lands on `/auth/callback` themselves via the redirect).
+
+**Long-term better fix**: render `{{ .Token }}` (a 6-digit code) instead of `{{ .ConfirmationURL }}` in the Supabase Reset Password template. The email then contains no clickable link at all — nothing for the scanner to prefetch. Our `/forgot-password` page already supports the code-paste path (it's the same component, both branches handled). Not adopted yet because clickable links are the more familiar UX. See `DEPLOYMENT.md` Known Gotchas for the full write-up.
+
+### Unexpected work item: Resend custom SMTP
+
+Same smoke test surfaced that Supabase's built-in email sender was unreliable: heavy rate-limiting, lots of spam-folder hits, and emails to addresses other than the Resend-account owner getting refused with `550 You can only send testing emails to your own email address` (Resend was in sandbox mode).
+
+**Resolved**: verified the `zolalongform.com` domain at Resend (Auto-Configure via GoDaddy added DKIM + MX + SPF records), then updated Supabase Auth SMTP to send from `noreply@zolalongform.com` via `smtp.resend.com:465`. Operational details in `DEPLOYMENT.md` § Email delivery via Resend. This closes the original "Custom Supabase email provider" carry-forward TODO that was logged when this phase started.
+
+### End-to-end verification
+
+Confirmed on production:
+
+- Fresh signup with a Gmail address → onboarding → home page renders the new feed.
+- Save an article, open Discover, swipe a few.
+- Sign out → sign back in with email + password.
+- Change password from `/settings` (verifies current via sign-in round-trip, then `updateUser`).
+- `/forgot-password` → email arrives in inbox (not spam) from `noreply@zolalongform.com` → click link → `/auth/reset-password` → set new password → land on `/login` → sign in with new password.
+- OTP fallback (`/login` → "Use email code instead") still works for pre-Phase-11 accounts.
+
+### Migration note still applies
+
+Pre-Phase-11 accounts (notably the user's own `pvlellouche@gmail.com` from earlier testing) have no password set in `auth.users` and need to run "Forgot password" once (or use the OTP fallback) to bootstrap. The migration note in §5 above remains accurate.
+
+---
+
+*Last updated: 2026-05-24, after end-to-end production verification.*

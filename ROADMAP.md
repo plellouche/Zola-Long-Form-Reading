@@ -19,6 +19,10 @@
 - "Change password" section on `/settings` (verifies current via a sign-in round-trip since Supabase has no dedicated verify endpoint).
 - Anti-enumeration error copy on `/login` and `/forgot-password`.
 - Email confirmation disabled on Supabase for the invite-only beta.
+- **Proofpoint URL-prefetch workaround** in `apps/web/middleware.ts` — catches `/?code=<uuid>` at the apex and forwards to `/auth/callback?next=/auth/reset-password`. Lets the click-the-link password-reset flow work even on UMich / corporate inboxes whose email scanners would otherwise consume the one-time token. Details: `DEPLOYMENT.md` § Known Gotchas.
+- **Resend custom SMTP** for all Supabase Auth emails — domain `zolalongform.com` verified at Resend, sender `noreply@zolalongform.com` ("Zola Longform"). Fixes the prior spam-folder + Gmail-no-delivery issues. Operational details: `DEPLOYMENT.md` § Email delivery via Resend.
+
+**Verification**: end-to-end signup → onboarding → save → discover → sign out → forgot-password → click email link → set new password → sign in confirmed working on `https://zolalongform.com` (2026-05-24).
 
 **Deferred to Phase 11.5**: OAuth providers (Google / GitHub). Reasoning: account-linking edge cases are easier to address after email/password is shipped. Trigger to start 11.5: ≥1 invitee says they'd rather sign in with Google, or you want to reduce friction for a public launch (Phase 13).
 
@@ -26,43 +30,37 @@
 
 ---
 
-## Phase 12 — Production Deployment
+## Phase 12 — Production Deployment ✅
 
-**Status (2026-05-23)**: Frontend on Vercel is live; FastAPI + final wiring still to do. Operational details and exact commands live in `DEPLOYMENT.md` — read that for the doing; this section is the plan.
+**Status (2026-05-24)**: shipped. Production live at `zolalongform.com` + `api.zolalongform.com`. Phase 11 also shipped alongside. Operational details + carry-forward TODOs live in `DEPLOYMENT.md`; this section is the historical plan.
 
-**Goal**: Get the app onto real URLs so it can be shared.
-
-**Why now**: The app is feature-complete enough for invitees. Deployment is the bottleneck between "this works on my Mac" and "this is a product."
-
-### Architecture
+### Architecture (as deployed)
 | Component | Host | Domain |
 |---|---|---|
-| Frontend (Next.js) | Vercel | `zolalongform.com` ✅ live, HTTPS via Let's Encrypt |
-| Backend (FastAPI) | Render (or Fly.io) | `api.zolalongform.com` (planned) |
+| Frontend (Next.js) | Vercel | `zolalongform.com` — HTTPS via Let's Encrypt |
+| Backend (FastAPI) | Render (free tier) | `api.zolalongform.com` — HTTPS via Let's Encrypt |
 | DB + Auth + Storage | Supabase | managed |
-| Ingestion cron | GitHub Actions (already wired) | n/a |
+| Auth email | Resend custom SMTP | sender `noreply@zolalongform.com` |
+| Ingestion cron | GitHub Actions | n/a |
+| Keep-Render-awake | GitHub Actions (every 10 min) | n/a |
 
-### Status of each task
+### What shipped
+- Vercel project `zola` (Root Directory `apps/web`, framework auto-detect, pnpm workspace install). Production env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL=https://api.zolalongform.com`.
+- Render service `zola-api` via blueprint (`render.yaml` at the repo root). Python 3.12 native runtime; installs `requirements.txt` + workspace `packages/ingest`; uvicorn on `$PORT`; `/healthz` as health check; auto-deploys on push to `main`.
+- Supabase Auth: Site URL + Redirect URLs include the production domain. Email confirmation disabled (invite-only).
+- FastAPI CORS expanded to allow production + preview-deploy patterns.
+- Supabase Session pooler URL used for `DATABASE_URL` on Render (IPv4 path; the direct Supabase URL is IPv6-only and Render is IPv4-only). Documented in `DEPLOYMENT.md` Known Gotchas.
+- Custom domain `zolalongform.com` (apex + www via Vercel, `api` subdomain via Render) on GoDaddy DNS.
+- Resend custom SMTP for all auth emails — domain verified, sender `noreply@zolalongform.com`.
+- GH Actions: ingestion cron secrets already in place; `RENDER_API_URL` secret set for the keep-awake workflow.
+- End-to-end smoke test on production confirmed: signup → onboarding → save → discover → sign out → forgot-password → reset → sign in.
 
-- [x] **Vercel project**: imported from GitHub. Root Directory = `apps/web`; framework auto-detects the pnpm workspace from the repo root. Production env vars set: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` (currently a placeholder). Auto-deploys on push to `main` via the Vercel-GitHub integration.
-- [ ] **Preview env vars on Vercel**: deferred. Vercel CLI v54 has a non-interactive quirk where adding env vars to `preview` requires a TTY even with `--yes`. Production works fine. Add via dashboard if/when PR previews are needed.
-- [ ] **Render service** for FastAPI: not started. Needs a Dockerfile (or `requirements.txt` + start command for the native Python runtime), env vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`), and the existing `/healthz` endpoint as the health check. Render free tier sleeps after 15 min idle; either pay $7/mo for always-on or accept ~30 s wake-up on first request.
-- [ ] **Supabase Auth config**: update **Site URL** + **Redirect URLs** in the Supabase dashboard to include the Vercel production URL (and the custom domain when ready). Without this, magic-link / OTP / password-reset emails land back at `localhost:3000`.
-- [ ] **FastAPI CORS**: `services/api/app/main.py` `allow_origins` currently lists only `http://localhost:3000`. Add the Vercel URL and the future custom domain. Must be done **before** Render deploy or the frontend can't talk to the API.
-- [ ] **Wire frontend → API**: once Render is live, replace the `NEXT_PUBLIC_API_URL` placeholder on Vercel with the real Render URL and redeploy. (Env-var changes don't auto-trigger a rebuild.)
-- [ ] **Domain**: purchase a real domain. Attach to Vercel (frontend) and to Render (subdomain like `api.<domain>`). Update Supabase + CORS to include it.
-- [ ] **GH Actions secrets**: ingestion cron currently reads `DATABASE_URL` from a local `.env`. For production, move it to GitHub Actions secrets so the scheduled run can write to Supabase from CI.
-- [ ] **Cold-start mitigation**: decide on Render plan ($0 free w/ sleep vs $7 always-on) once the API is live and we see real cold-start impact.
-- [ ] **Pre-launch smoke test**: sign up fresh account → onboard → save → list → discover → follow → all on production URLs. Verify the auth flow end-to-end with Supabase email delivery actually working.
-
-### Dependencies
-- Phase 11 (auth) should ship first — production OTP rate limits are restrictive on the free tier. Currently deferred; we're shipping Phase 12 with the existing OTP flow and `/dev/sign-in-as` (which is automatically disabled outside `NODE_ENV=development`).
-- A real domain name (deferred — Vercel-assigned URL is fine for soft launch).
-
-### Trigger to start the remaining work
-- Now. The remaining steps are sequential: CORS → Render → update Vercel env var → smoke test. Then domain whenever convenient.
-
-**Estimate remaining**: ~half a day for Render + Supabase Auth + smoke test, assuming nothing surprises us. Custom domain is another ~30 minutes once chosen.
+### Carry-forward TODOs (full details in `DEPLOYMENT.md`)
+- **Vercel GitHub auto-deploy** is not connected — every Vercel deploy is currently `npx vercel --prod --yes`.
+- **Vercel Preview env vars** not set — PR-preview deploys would break at runtime.
+- **Render free → Starter ($7/mo)** when the keep-awake hack becomes insufficient or cold-start latency hurts.
+- **Separate Supabase project for previews** if PR previews land.
+- **Sentry / error tracking** at Phase 17 trigger.
 
 ---
 

@@ -449,37 +449,46 @@ Plan: `PHASE_10_POLISH.md`.
 
 ## Phase 12 — Production Deployment
 
-**Status (2026-05-23)**: partial — frontend deployed; backend + final wiring outstanding. Operational runbook: `DEPLOYMENT.md`. Plan: `ROADMAP.md` Phase 12.
+**Status (2026-05-24)**: shipped (with carry-forward TODOs documented in `DEPLOYMENT.md`). End-to-end production sign-in flow verified. Operational runbook: `DEPLOYMENT.md`. Plan: `ROADMAP.md` Phase 12.
 
 ### Shipped
 - **Vercel project `zola`** under `paullellouche/zola` (org `team_HJEK7KT4Z4OAUHOewuUDXhXK`, project `prj_oBr0mniHQuqUbW1Wm1yiW4jbSpBu`).
-  - Root Directory: `apps/web`. Framework auto-detected.
+  - Root Directory: `apps/web`. Framework auto-detected (Next.js).
   - Workspace install handled automatically because `pnpm-workspace.yaml` lives at the repo root — Vercel walks up from the Root Directory and installs the whole workspace, then builds the Next.js app.
-  - Auto-deploys on push to `main` via the Vercel-GitHub integration.
-  - **Live production URL**: `https://zolalongform.com` (custom domain via GoDaddy, SSL via Let's Encrypt). The Vercel-assigned URL `zola-brown-mu.vercel.app` also still resolves and 308-redirects to the custom domain.
-- **Production env vars set** via CLI (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL`). The last is currently a placeholder (`https://api-placeholder.invalid`) — anything hitting FastAPI 500s on the live site until Render is up. Unauthenticated pages still render correctly.
-- **Build config** lives on the Vercel project (not in repo) — Root Directory `apps/web`, framework `nextjs`, install/build/output defaults. We tried `vercel.json` first; removing it let auto-detection take over cleanly.
+  - **Live at `https://zolalongform.com`** (custom domain via GoDaddy, SSL via Let's Encrypt). The Vercel-assigned URL `zola-brown-mu.vercel.app` also still resolves and 308-redirects to the custom domain.
+  - **Deploys are manual** via `npx vercel --prod --yes` — the GitHub auto-deploy integration was never connected because we created the project via `vercel link` from the CLI. Listed in the DEPLOYMENT.md Carry-forward TODOs.
+- **Render service `zola-api`** with the blueprint in `render.yaml` at the repo root.
+  - **Live at `https://api.zolalongform.com`** (custom domain via GoDaddy, SSL via Let's Encrypt).
+  - Python 3.12; build `pip install -r requirements.txt && pip install ../../packages/ingest`; start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+  - Free tier (sleeps after 15 min idle). Kept warm by the `keep-render-awake` GH Actions workflow that pings `/healthz` every 10 minutes.
+  - Auto-deploys on push to `main` (Render's `autoDeploy: true`).
+- **Database connection from Render via Supabase Session Pooler.** Supabase's direct DB URL is IPv6-only as of 2024 and Render's outbound is IPv4-only, so the API can't reach the direct URL. `DATABASE_URL` on Render uses the Session pooler endpoint (`postgresql+asyncpg://postgres.<ref>:<password>@aws-1-us-east-2.pooler.supabase.com:5432/postgres`). Transaction pooler (port 6543) does NOT work — lacks prepared statements.
+- **Supabase Auth**: Site URL `https://zolalongform.com`. Redirect URLs include `https://zolalongform.com/**` and `https://zolalongform.com/auth/callback`. Email confirmation disabled (frictionless signup for the invite-only beta).
+- **FastAPI CORS** updated in `services/api/app/main.py`: explicit allow list for `https://zolalongform.com`, `https://www.zolalongform.com`, and the Vercel alias; plus a regex for preview-deploy subdomains.
+- **Vercel env vars** (Production): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` (= `https://api.zolalongform.com`).
+- **GH Actions secrets**: `DATABASE_URL` already present (direct connection — GH Actions supports IPv6, so ingestion runs unchanged), `RENDER_API_URL` set for the keep-awake workflow.
+- **Resend custom SMTP** for all Supabase Auth emails — see Phase 11 entry below + `DEPLOYMENT.md` § "Email delivery via Resend". Closes the original "Custom Supabase email provider" carry-forward TODO from this phase.
 
-### Outstanding
-- [ ] **FastAPI on Render**: write Dockerfile (or use Render's Python runtime), set env vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`), configure health check at `/healthz`. Pick free-tier-with-sleep vs $7/mo always-on.
-- [ ] **CORS in `services/api/app/main.py`**: add the Vercel URL (and eventually the custom domain) to `allow_origins`. Must happen before Render deploy or the frontend can't reach the API.
-- [ ] **Supabase Site URL + Redirect URLs**: add `https://zola-brown-mu.vercel.app` (and `/**` wildcard). Without this, sign-in emails redirect to `localhost:3000`.
-- [ ] **Update `NEXT_PUBLIC_API_URL` on Vercel** to the real Render URL once the API is up, then redeploy (env-var changes don't auto-rebuild).
-- [ ] **Preview env vars on Vercel**: deferred. CLI v54 has a non-interactive quirk that blocks `vercel env add … preview --yes` without a TTY. PR-preview deploys will fail with "missing env var" until these are added — do via dashboard if/when PR previews matter.
-- [ ] **Custom domain**: buy, attach to Vercel, attach API subdomain to Render. Update Supabase and CORS.
-- [ ] **GH Actions ingestion**: move `DATABASE_URL` from local `.env` to Actions secrets.
-- [ ] **End-to-end smoke test on production URLs**: sign up → onboard → save → discover → follow.
+### Carry-forward TODOs (still outstanding — full details in `DEPLOYMENT.md`)
+- **Vercel GitHub auto-deploy** — not connected; every Vercel deploy needs `npx vercel --prod --yes` until reconnected.
+- **Vercel Preview env vars** — not set; PR-preview deploys would break at runtime.
+- **Render free → Starter ($7/mo)** — upgrade once cold-start latency becomes a real complaint.
+- **Separate Supabase project for previews** — if PR-preview deploys land, prod and preview shouldn't share a DB.
+- **Sentry / error tracking** — Phase 17 trigger.
 
 ### Notable Phase 12 decisions
-- **Vercel monorepo handling via Root Directory + workspace auto-detect.** Initial attempts to set `rootDirectory: null` (i.e. repo root) failed with "No Next.js version detected" because Vercel looks for Next.js in the deploy directory's `package.json`. The working pattern is: Root Directory = `apps/web`, and Vercel automatically walks up to install the pnpm workspace from the repo root. No custom `vercel.json` needed.
-- **Placeholder `NEXT_PUBLIC_API_URL`.** Lets us ship the frontend independently of the backend. Unauthenticated routes still render; authenticated routes will visibly error until Render is up. Worth it for the partial-deploy verification.
-- **No custom domain yet.** Vercel-assigned URL is good enough for soft launch and lets us defer the cost of a domain until we know what we want.
-- **Preview env vars deferred.** Vercel CLI v54 has a non-interactive quirk where `--yes` doesn't satisfy the "which git branch" prompt for preview targets. Production-only deploys work fine; preview deploys would currently fail at build time without env vars. Acceptable trade-off — we don't have an active PR workflow yet.
+- **Vercel monorepo handling via Root Directory + workspace auto-detect.** Root Directory = `apps/web`; Vercel walks up to install the pnpm workspace from the repo root because `pnpm-workspace.yaml` is there. No custom `vercel.json`.
+- **API installs both requirements.txt and the workspace `packages/ingest`** because `routers/ingest.py` imports `longform_ingest` at module load. Build command in `render.yaml` reflects this.
+- **Supabase Session pooler URL on Render** to work around IPv6 vs IPv4. See Known Gotchas in DEPLOYMENT.md.
+- **Manual Vercel deploys** kept for now (not worth reconnecting GitHub mid-phase). Documented as carry-forward.
+- **Preview env vars deferred.** Vercel CLI v54 quirk prevents non-interactive add for the Preview environment; dashboard-only fix when wanted.
+- **Free tier across the board** ($0 cost for Vercel + Render + Supabase + GH Actions; ~$15/yr only for the GoDaddy domain). Resend free tier covers email at 100/day.
 
 ### Surfaces verified
-- `npx vercel --prod` returns `readyState: READY`. Deployment inspector URL: `https://vercel.com/paullellouche/zola/Abk1Mx8WwcvFad1ZyA9L9F2DNWBV`.
-- Build log shows 378 packages installed via pnpm, 17 routes generated.
-- (Pending) Browser visit to confirm public pages render with new Zola brand.
+- `pnpm typecheck` + `pnpm build` clean throughout the phase.
+- `https://zolalongform.com` returns 200; all public routes render the Zola brand.
+- `https://api.zolalongform.com/healthz` returns 200; DB-touching endpoints (`/api/topics`, `/api/sources`, `/api/articles`) return real data.
+- End-to-end smoke test on production: signup → onboarding → save article → open Discover → sign out → forgot-password → click email link → set new password → sign in. All paths confirmed working on `zolalongform.com`.
 
 ---
 
@@ -496,6 +505,8 @@ Plan: `PHASE_10_POLISH.md`.
 - **`/settings`** gains a "Change password" section: current + new + confirm. Current password verified via a quick `signInWithPassword` round-trip (Supabase doesn't expose a dedicated "verify password" endpoint, but a successful sign-in is the canonical equivalent).
 - **`lib/password.ts`**: shared strength-meter helper. Lazy-initialized `zxcvbn-ts` setup, single `estimateStrength()` API.
 - **`/dev/sign-in-as`** untouched — still works for local dev, still refuses to run outside `NODE_ENV=development`.
+- **Proofpoint URL-prefetch workaround** (added during smoke-testing on a UMich address): `apps/web/middleware.ts` catches `/?code=<uuid>` at the apex and forwards to `/auth/callback?next=/auth/reset-password`. Corporate / university email scanners prefetch every URL in inbound mail and would consume the one-time PKCE recovery token before the user clicks. With the middleware in place, the click-the-link recovery path works even when the email is delivered to a Proofpoint-scanned inbox. See `DEPLOYMENT.md` § Known Gotchas for the full write-up + the long-term alternative (code-only email template).
+- **Resend custom SMTP** wired in to fix delivery failures (Supabase free-tier sender + Resend sandbox were each blocking different recipients). All Supabase Auth emails now ship from `noreply@zolalongform.com` via `smtp.resend.com:465`. Domain `zolalongform.com` is verified at Resend. Full config in `DEPLOYMENT.md` § Email delivery via Resend.
 
 ### Decisions
 - **OAuth providers (Google / GitHub) deferred to Phase 11.5.** Account-linking edge cases easier to handle after email/password is shipped.
@@ -518,6 +529,7 @@ Plan: `PHASE_10_POLISH.md`.
 ### Surfaces verified
 - `pnpm typecheck` clean across all changes.
 - `pnpm build` clean; all new routes built. `/signup` 970 KB, `/settings` 976 KB, `/auth/reset-password` ≈ same family.
+- **End-to-end production smoke test (2026-05-24)**: fresh signup → onboarding → save article → Discover → sign out → forgot-password → email arrives in inbox from `noreply@zolalongform.com` → click link → set new password → sign in with new password → change password from `/settings` → all confirmed working on `zolalongform.com`.
 
 ---
 
