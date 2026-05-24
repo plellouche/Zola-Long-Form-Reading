@@ -58,10 +58,20 @@ export default function ForgotPasswordPage() {
     setError(null);
     setPhase('requesting');
     const supabase = createSupabaseBrowserClient();
+    // We support two recovery paths so the user can take whichever the
+    // email surfaces first:
+    //   1. If their Supabase template renders {{ .Token }}, they paste the
+    //      6-digit code into step 2 of this page (handled by resetPassword
+    //      below).
+    //   2. If the template renders {{ .ConfirmationURL }}, the link goes
+    //      to /auth/callback which exchanges the PKCE code for a session
+    //      and forwards to /auth/reset-password where the user sets a new
+    //      password. `redirectTo` controls that landing URL.
+    const origin = window.location.origin;
     const { error: err } = await supabase.auth.resetPasswordForEmail(
       email.trim().toLowerCase(),
+      { redirectTo: `${origin}/auth/callback?next=/auth/reset-password` },
     );
-    // Anti-enumeration: surface generic success even on "user not found".
     if (err && /invalid|rate/i.test(err.message)) {
       setPhase('request');
       setError(err.message);
@@ -149,7 +159,7 @@ export default function ForgotPasswordPage() {
       {(phase === 'reset' || phase === 'resetting') && (
         <>
           <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-            If <strong>{email}</strong> is registered, a 6-digit code is on its way (check spam too). Paste it below and choose a new password.
+            Check <strong>{email}</strong> (and the spam folder) for a reset email. <strong>Either click the link in the email</strong> (you&rsquo;ll land back here on a new-password page) <strong>OR</strong>, if your email shows a 6-digit code instead of a link, paste it below.
           </p>
           <form onSubmit={resetPassword} className="mt-8 space-y-4">
             <label className="block">
