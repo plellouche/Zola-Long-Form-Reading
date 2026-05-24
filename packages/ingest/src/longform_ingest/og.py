@@ -22,6 +22,8 @@ class OgMetadata:
     author: str | None
     publication_date: date | None
     og_image_url: str | None
+    word_count: int | None = None
+    reading_time_minutes: int | None = None
 
 
 def _attr(soup: BeautifulSoup, *selectors: tuple[str, dict[str, str]]) -> str | None:
@@ -44,6 +46,18 @@ def _parse_date(value: str | None) -> date | None:
         return date_parser.parse(value).date()
     except (ValueError, TypeError, OverflowError):
         return None
+
+
+def _estimate_word_count(soup: BeautifulSoup) -> int:
+    """Rough body-text word count. Strips scripts/styles/nav/header/footer
+    and counts whitespace-separated tokens in what remains. Good enough for
+    a min-length filter; nowhere near accurate enough to display."""
+    for el in soup(["script", "style", "noscript", "nav", "header", "footer", "aside", "form"]):
+        el.decompose()
+    # Prefer <article> or <main> when available; fall back to <body>.
+    container = soup.find("article") or soup.find("main") or soup.body or soup
+    text = " ".join(container.stripped_strings)
+    return len(text.split())
 
 
 def parse_html(url: str, html: str) -> OgMetadata:
@@ -77,6 +91,10 @@ def parse_html(url: str, html: str) -> OgMetadata:
         or _attr(soup, ("meta", {"name": "twitter:image"}))
     )
 
+    word_count = _estimate_word_count(soup)
+    # ~225 wpm is a reasonable average for long-form reading.
+    reading_time = max(1, round(word_count / 225)) if word_count else None
+
     return OgMetadata(
         canonical_url=canonical,
         title=title,
@@ -84,6 +102,8 @@ def parse_html(url: str, html: str) -> OgMetadata:
         author=author,
         publication_date=_parse_date(pub_raw),
         og_image_url=image,
+        word_count=word_count or None,
+        reading_time_minutes=reading_time,
     )
 
 

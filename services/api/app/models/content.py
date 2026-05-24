@@ -51,6 +51,19 @@ class Source(Base):
     consecutive_failures: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    # See migration 009. fetch_strategy decides which adapter the ingest
+    # runner uses for this source. Default is 'rss' so existing sources
+    # keep behaving as before.
+    fetch_strategy: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'rss'")
+    )
+    archive_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archive_link_selector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sitemap_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sitemap_url_pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
+    min_word_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

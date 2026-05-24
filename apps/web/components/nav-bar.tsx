@@ -59,6 +59,16 @@ export async function NavBar() {
               Discover
             </Link>
           )}
+          {!user && (
+            <>
+              <Link href="/sources" className={`hidden sm:inline-flex ${linkCls}`}>
+                Sources
+              </Link>
+              <Link href="/about" className={`hidden sm:inline-flex ${linkCls}`}>
+                About
+              </Link>
+            </>
+          )}
 
           {!user && (
             <Link

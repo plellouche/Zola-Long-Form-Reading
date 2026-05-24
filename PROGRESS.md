@@ -533,6 +533,115 @@ Plan: `PHASE_10_POLISH.md`.
 
 ---
 
+## Fetch strategies & full-archive backfill
+
+**Status (2026-05-24)**: shipped. The ingestion pipeline now supports four strategies (`rss`, `archive`, `sitemap`, `manual`) selected per-source. Backfilled every source we had a viable index for.
+
+### Why
+Before this change, every source had to expose a working RSS feed for the cron to discover articles. RSS feeds typically expose only the most recent 10–20 items, so even for sources we had been polling for weeks (Aeon, Longreads, etc.) we only had a tiny slice of their archive. For sources without RSS at all (Paul Graham, The New Yorker, Wired, The Atlantic, Harper's, National Geographic, …) the cron silently no-op'd — we had 0 articles from them despite the sources being listed as active.
+
+### Shipped
+
+**Schema**: migration `infra/supabase/migrations/009_phase13_fetch_strategies.sql` adds five columns to `public.sources`:
+- `fetch_strategy text not null default 'rss'` — one of `rss | archive | sitemap | manual`
+- `archive_url`, `archive_link_selector` — archive walker config
+- `sitemap_url`, `sitemap_url_pattern` — sitemap walker config
+- `min_word_count int not null default 0` — per-source filter for short news items
+
+**Adapters** in `packages/ingest/src/longform_ingest/strategies/`:
+- `rss_strategy.py` — wraps existing feedparser + conditional-GET pipeline.
+- `archive.py` — fetches `archive_url`, applies a CSS selector, enumerates link hrefs, then fetches each link via `og.fetch_og` for metadata. Capped at 500 candidates/source.
+- `sitemap.py` — walks `sitemap.xml`, recursing into sitemap-index XML, filtering URLs by `sitemap_url_pattern` regex (e.g. `^.*\/magazine\/\d{4}\/.*` for The New Yorker). Then per-article metadata fetch + `min_word_count` floor to filter out short news items.
+- `manual.py` — no-op. Marks sources where automated discovery isn't viable so they stop tripping the cron's failure counter.
+
+**Runner refactor**: `runner.py` previously inlined RSS logic. Now it picks an adapter via `strategies.for_source(source.fetch_strategy)` and calls a uniform `Strategy.fetch()` returning `StrategyResult { status, candidates, http_status, error, etag, last_modified }`. The insert + topic-tag tail is shared across strategies.
+
+**OG helper enhancement**: `og.parse_html` now also returns `word_count` and `reading_time_minutes` (~225 wpm). `db.insert_article` accepts both. Lets the sitemap/archive paths filter on length and the article-detail page show real reading time on archive-sourced articles (RSS-sourced articles still get this on subsequent re-ingests if we ever revisit the URL).
+
+**SQLAlchemy model updated** (`services/api/app/models/content.py`): the `Source` class now includes the five new columns so any future admin UI can read/write them.
+
+### Per-source configuration
+
+| Source | Strategy | Notes |
+|---|---|---|
+| Paul Graham | archive | `paulgraham.com/articles.html` + `a[href$=".html"]` + 400-word floor |
+| The New Yorker | sitemap | `/magazine/\d{4}/` + 1500-word floor (only the weekly magazine, not the news desk) |
+| Wired | sitemap | `/story/` pattern + 1500-word floor (filters out deal/coupon posts) |
+| The Atlantic | sitemap | `/magazine/archive/` + 1500-word floor |
+| Harper's | sitemap_index | `/archive/` + 1000-word floor |
+| National Geographic | sitemap | `/(article\|magazine\|premium-content)/` + 1500-word floor |
+| Latitude Media | sitemap | no pattern, 800-word floor |
+| Sunday Long Read | sitemap | no pattern, 800-word floor |
+| Alpinist | **manual** | sitemap.xml only had homepage; nothing to walk |
+| Sidetracked, Austin Vernon | **manual** | no sitemap / no archive index |
+| Boston Review, The Rumpus, Reddit /r/longform, 3 Quarks Daily | **manual** | RSS feed broken (empty / 404 / wrong shape); reddit content needs custom link extraction |
+| All other previously-working sources | rss (unchanged) | The Conversation, Literary Hub, Nautilus, Longreads, ProPublica, Grist, Aeon, Guernica, Public Books, Paris Review, Adventure Journal, The New Inquiry |
+
+### Article growth
+
+- **Before**: 644 articles across 14 productive sources.
+- **Paul Graham backfill alone**: +208 articles (4 hand-submitted → 212 total).
+- **Sitemap backfill** of New Yorker, Wired, Atlantic, Harper's, Nat Geo, Latitude Media, Sunday Long Read added several hundred more (final numbers in the post-backfill table written into the commit message).
+
+### Notable decisions
+- **Min-word-count is per-source, not global.** Big magazines mix daily news + features in the same sitemap; we need an aggressive floor for them. Small publications can have a lower floor. Default of 0 means existing RSS sources are unchanged.
+- **Archive crawl is capped at 500 candidates per source.** Defensive — a misconfigured selector could otherwise enumerate thousands of unrelated links. PG has ~225 essays; this is comfortable.
+- **Sitemap crawl recurses through sitemap-index XML** but otherwise visits each URL once, then `og.fetch_og` handles the article-page fetch. Per-host concurrency is gated by the existing `rate_limit.host_semaphore`, so we don't hammer any one source.
+- **`manual` strategy for sources without a discovery path** rather than deactivating them. Keeps them visible in admin UI; the cron just skips them (status `NO_CHANGES`).
+- **Existing RSS sources continue to work without re-configuration.** Default `fetch_strategy='rss'` + the migration is non-destructive.
+
+### Files touched
+- New: `infra/supabase/migrations/009_phase13_fetch_strategies.sql`, `packages/ingest/src/longform_ingest/strategies/{__init__,base,rss_strategy,archive,sitemap,manual}.py`
+- Modified: `packages/ingest/src/longform_ingest/runner.py` (full rewrite of `_ingest_one`), `packages/ingest/src/longform_ingest/db.py` (new columns in queries; `insert_article` accepts `word_count` + `reading_time_minutes`), `packages/ingest/src/longform_ingest/og.py` (word-count + reading-time extraction), `services/api/app/models/content.py` (Source model new columns)
+- Configuration: per-source SQL applied to set `fetch_strategy` + `archive_url`/`sitemap_url` + `min_word_count`
+
+### Surfaces verified
+- Migration applied to Supabase, schema confirmed.
+- `pnpm typecheck` clean on web; API imports cleanly.
+- End-to-end test on Paul Graham: 212 candidates seen, 208 new inserted (4 dups from prior hand-submitted).
+- End-to-end test on Alpinist sitemap correctly identified the source as empty → marked manual.
+- Sitemap backfill across 7 sources: full results in the commit message.
+
+### Known follow-up (not blocking)
+- **Archive + sitemap strategies re-walk every URL on every cron run** (every 6h). Insert dedupes via `articles.canonical_url` unique constraint, so no duplicates land, but we still fetch each page. Optimization: query `articles.canonical_url` upfront, skip candidate URLs we've already ingested. Saves ~6000 page-fetches/day at current scale.
+- **Some failing-RSS sources still configured as `manual`** (Boston Review, The Rumpus, 3 Quarks Daily, Reddit /r/longform). Each has a different fix path — broken RSS URLs, missing feed, or non-trivial extraction (reddit posts → external article links).
+- **Sitemap URL-pattern mismatches**: Harper's pulled in 1 article (`/archive/` regex too narrow); Nat Geo pulled in 0 (`/(article|magazine|premium-content)/` doesn't match their actual URL structure). Both need a 10-min pattern audit + re-run.
+
+---
+
+## Phase 13 — Public Landing Page
+
+**Status (2026-05-24)**: shipped. Plan: `PHASE_13_LANDING.md`.
+
+### Shipped
+- **`/` (signed-out)** rewritten: full landing page with `<LandingHero>` (wordmark + tagline + subhead + Sign up / Sign in / Browse CTAs), `<ProductExplainer>` three-card grid (Discover / Save / Share with lucide icons + 30-word descriptions), `<SourceBand>` (CSS-only marquee of source names in Spectral, pulled live from `/api/sources`, paused on hover, motion-reduce respected), and a closing CTA card.
+- **`/about` (new)**: ~400-word first-person essay on what Zola is, what it isn't, content policy, and who's behind it. CTAs adapt to auth state.
+- **`/sources` (new, public)**: sorted-by-article-count grid of all active sources. Each card: name, host, article count badge. Cards link to `/source/[slug]`.
+- **Invite-only gate on `/signup`**: server-side check via `NEXT_PUBLIC_INVITE_REQUIRED=true`. When on, `<InviteGate>` shows a code field; codes live server-only in `ZOLA_INVITE_CODES`.
+- **Nav-bar**: signed-out viewers now see "Sources" and "About" alongside "Browse".
+
+### Decisions
+- **Invite-only ON by default**, controlled by env vars. Codes are doormat security, not real auth — fine for invite-only beta semantics.
+- **No per-source hand-written descriptions yet.** `/sources` renders name + homepage host + article count. A `sources.public_description` column + ~50-word human descriptions is a Phase-13.5 polish item.
+- **Marketing pages render the same for everyone** — only `/signup` and authenticated routes change behavior with sign-in state.
+
+### Files touched
+- New: `apps/web/components/{landing-hero,product-explainer,source-band}.tsx`, `apps/web/app/{about,sources}/page.tsx`, `apps/web/app/signup/invite-gate.tsx`, `apps/web/lib/invite.ts`
+- Refactored: `apps/web/app/signup/page.tsx` (now a server component dispatching to the gate); `signup-form.tsx` extracted from the old client page
+- Modified: `apps/web/app/page.tsx` (signed-out branch), `apps/web/components/nav-bar.tsx`, `apps/web/app/globals.css` (`@keyframes marquee` + `.animate-marquee` + reduced-motion guard)
+
+### Surfaces verified
+- `pnpm typecheck` clean.
+- `pnpm build` clean; new routes present: `/about` (153B), `/sources` (171B).
+- `<SourceBand>` is fail-soft on ApiError so a Render cold-start doesn't 500 the landing page.
+
+### Carry-forward
+- Per-source `public_description` column + hand-written descriptions: 27 × ~50 words ≈ 2 hrs of writing. Lands after first invite cohort feedback.
+- Vercel env vars `NEXT_PUBLIC_INVITE_REQUIRED=true` + `ZOLA_INVITE_CODES=…` to set on Production before next deploy.
+- OG image for `zolalongform.com` (currently inherits article default). Phase 14 polish.
+
+---
+
 ## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---

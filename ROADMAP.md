@@ -64,36 +64,21 @@
 
 ---
 
-## Phase 13 — Public Marketing Home + Signup Flow
+## Phase 13 — Public Marketing Home + Signup Flow ✅
 
-**Goal**: When a brand-new visitor lands on `longform.app`, give them a reason to sign up.
+**Status (2026-05-24)**: shipped. Implementation notes in `PROGRESS.md` § "Phase 13 — Public Landing Page"; plan + decisions log in `PHASE_13_LANDING.md`.
 
-**Why now**: Right now `/` either gates to `/login` (signed-out) or shows the For-You feed (signed-in). There's no marketing surface. Once we have a public URL, anyone landing without an invite link sees a barren login form.
+**What shipped**:
+- `/` (signed-out) replaced with a real landing page: `<LandingHero>` (wordmark + tagline + CTAs), `<ProductExplainer>` (Discover / Save / Share three-card grid), `<SourceBand>` (CSS marquee of source names, paused on hover, reduced-motion respected), and a closing CTA card.
+- `/about` (new): ~400-word first-person essay on what Zola is, what it isn't, content policy, who's behind it.
+- `/sources` (new, public): grid of all active sources sorted by article count.
+- `/signup` gated by `NEXT_PUBLIC_INVITE_REQUIRED=true` + server-only `ZOLA_INVITE_CODES`. Codes are doormat security for the invite-only beta.
+- Nav-bar updates: signed-out viewers see "Sources" + "About" alongside "Browse".
 
-### Scope
-- **`/` (public)**: replace the current empty signed-out state with a real landing page:
-  - Hero: one-line value prop + tasteful screenshot (or interactive mockup of the discovery deck — that's the strongest "feel different" demo).
-  - Three-card explainer: Discover → Save → Share lists.
-  - Social proof: scrolling band of source logos (Aeon, Longreads, Nautilus, etc.).
-  - "Sign up" + "Sign in" CTAs.
-- **`/about`** (new): mission, content policy (REDIRECT_ONLY, respect for source), team / about the operator. Plain prose.
-- **`/sources`** (new — distinct from the admin `/settings/sources`): public list of all 11 curated sources with one-paragraph descriptions.
-- **`/signup`** (lands users into onboarding, ties into Phase 11)
-- **Invite-only mode**: add a setting (env var or `app_config` row) that switches `/signup` between "anyone can sign up" and "invite required". Default to invite-required until ready for general availability.
-- **Marketing copy**: write 5–10 lines of clear copy. The current site has none.
-
-### Design references to study
-- Pocket, Instapaper (the legacy read-later space)
-- Are.na (curated discovery aesthetic)
-- Substack's home (clean signup-first design)
-
-### Dependencies
-- Phase 12 (deployment) — no public home page matters without a public URL.
-
-### Trigger to start
-- Phase 12 lands AND you want to move from invite-only to discoverable.
-
-**Estimate**: 2–3 days (writing > coding here; the components are simple).
+**Deferred / carry-forward**:
+- Per-source hand-written descriptions (`sources.public_description` column + ~50 words per source) — ~2 hrs of writing. Lands after first invite cohort feedback.
+- OG image for `zolalongform.com` — Phase 14 polish.
+- Vercel env vars `NEXT_PUBLIC_INVITE_REQUIRED=true` + `ZOLA_INVITE_CODES=…` to set on Production before next deploy.
 
 ---
 
@@ -328,6 +313,7 @@ The product's value proposition is "high-signal long-form reading." With 11 seed
 
 ### Operating model
 - **Target cadence**: 1–3 new sources per month, every month. Not 30 at once.
+- **Plus the "acquisition push"**: a one-day batch session every quarter (or before a feature launch / friend invite wave) where you add 5–10 vetted sources at once. The fetch-strategy framework (`fetch_strategy: rss|archive|sitemap|manual`, see PROGRESS.md "Fetch strategies & full-archive backfill") makes this practical — sources without RSS or with thin RSS feeds are now ingestable via `archive` or `sitemap` strategy + a per-source word-count floor.
 - **Quality bar over completeness**. A "longform-only" filter is the brand promise. No daily-news outlets, no Twitter aggregators, no clickbait. Articles should average ≥ 1,500 words and ≥ 10-minute reads.
 - **Diversity of perspective and topic**. Audit the source list quarterly for blind spots: where are the literary sources? The science-writing sources? The voices outside the US/UK?
 - **Owner accountability**: someone (initially you) reviews each candidate against a written rubric. Don't outsource curation to "popularity" — that's how every aggregator becomes the same aggregator.
@@ -366,6 +352,24 @@ A working list — not committed. Each needs the rubric check.
 - Continuous, but specifically schedule a **source-acquisition pass quarterly**: 1 day of dedicated time to review the candidate list, vet 3–5 against the rubric, ingest 1–3.
 - Also revisit whenever a user complains the feed feels narrow.
 
+### Next push — high-priority candidates
+After the fetch-strategy framework landed, the bottleneck is no longer "does this source have a usable RSS feed" but "have we picked the right 10 to deepen this beta." Top of the queue for the next batch, with the strategy I'd use for each:
+
+| Candidate | Why now | Likely strategy |
+|---|---|---|
+| Quanta Magazine | Best science writing on the internet; perfect topic fit | `sitemap` + `/(physics-news\|biology-news\|computer-science-news\|mathematics-news)/` filter, 1500-word floor |
+| The Dial | Global longform, literary, founded 2022 — fills international-perspective gap | `rss` if available, else `sitemap` |
+| Lapham's Quarterly | Historical essays, themed quarterly issues | `archive` via their issues index |
+| n+1 | Literary criticism + cultural commentary | `rss` (`nplusonemag.com/feed/`) |
+| The Drift | Politics + criticism, edited by under-30s | `rss` |
+| Hakai Magazine | Science + nature writing, coastal focus | `rss` |
+| The Yale Review | Long essays, criticism | `rss` if available |
+| The New Atlantis | Tech & society, conservative-leaning to balance the lineup | `rss` |
+| Caravan Magazine (India) | International voice, longform reporting | `rss` |
+| Public Domain Review | Historical curios, beautiful essays | `rss` (`publicdomainreview.org/feed`) |
+
+Estimated work: ~15 min per source for vetting + config + first ingest run. Whole batch = ~3 hours.
+
 ---
 
 ## Sequencing recommendation
@@ -390,6 +394,30 @@ The minimal path to "publicly invitable" is **11 → 12 → 13**. Everything els
 
 ---
 
+## Pending small follow-ups (not phases, but tracked)
+
+These don't warrant their own phase — they're scoped well under a day each — but they're real, live, and worth doing soon. Listed in rough priority order.
+
+### Fix the broken-RSS sources
+- **Status**: known broken; currently marked `fetch_strategy = manual` so they don't spam the cron error log. Documented in PROGRESS.md "Fetch strategies & full-archive backfill" § Known follow-up.
+- **The sources**: Boston Review (RSS feed returns empty channel), The Rumpus (RSS URL is HTML, not RSS), 3 Quarks Daily (DNS resolution fails), Reddit /r/longform (RSS works but each entry is a thread; we'd need to extract the linked article URL from the thread body — non-trivial).
+- **Effort**: 30–60 min for each of the first three (find the new feed URL or switch to sitemap). Reddit is its own ~1-day project because the data shape is different.
+- **Trigger**: any time. The current `manual` config is non-blocking but means zero ingest from these sources.
+
+### Article-card resilience for sparse-metadata articles
+- **What's wrong**: the 208 Paul Graham essays just ingested have no `publication_date`, no `og_image_url`, often no `description`. Article cards (in `apps/web/components/article-card.tsx` and `featured-article-card.tsx`) render those fields when present and look slightly naked when they're missing — there's a header strip with the source name, then a title, then nothing else.
+- **Fix**: in the card components, when there's no OG image, fall back to a colored gradient block that uses a hash of the title or the source slug (similar to the `<Avatar>` fallback color logic in `components/avatar.tsx`). When there's no publication date, suppress the dot-separator instead of showing a stray "·". When there's no description, render a one-line author + word-count substitute.
+- **Effort**: ~2 hours; entirely in `article-card.tsx`, `featured-article-card.tsx`, and the deck card body in `discover-deck.tsx`.
+- **Trigger**: visible win as soon as you have ≥1 invitee browsing PG essays (which is now); not blocking but visibly polishes the lineup.
+
+### (Already documented elsewhere)
+- **Archive + sitemap dedup-before-fetch optimization**: known. In PROGRESS.md "Fetch strategies" § Known follow-up. Skips ~6000 page-fetches/day at current scale once implemented.
+- **Vercel GitHub auto-deploy reconnect**: in DEPLOYMENT.md Carry-forward TODOs.
+- **Render free → Starter upgrade**: in DEPLOYMENT.md Carry-forward TODOs.
+- **Vercel Preview env vars**: in DEPLOYMENT.md Carry-forward TODOs.
+
+---
+
 ## What's NOT in this roadmap (and why)
 
 - **Monetization** (paid tier, ads, affiliate): deliberately deferred until product-market fit signal exists. Free invite-only stays the model through Phase 13.
@@ -399,4 +427,4 @@ The minimal path to "publicly invitable" is **11 → 12 → 13**. Everything els
 
 ---
 
-*Last updated: Phase 10. Review when starting Phase 11 to refresh estimates and triggers.*
+*Last updated: 2026-05-24 after Phase 11 + Phase 12 close-out and fetch-strategy framework + backfill. Pending follow-ups section is the live picklist for under-a-day items.*

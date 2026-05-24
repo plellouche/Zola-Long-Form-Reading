@@ -1,8 +1,12 @@
-"""Top-level orchestration: ingest one source or all sources."""
+"""Top-level orchestration: ingest one source or all sources.
+
+The runner is strategy-agnostic — for each source it dispatches to the
+appropriate strategy adapter (RSS / archive / sitemap / manual), takes
+the returned candidates, and runs the same insert + tag pipeline.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -12,9 +16,10 @@ import asyncpg
 import httpx
 
 from . import db
-from .config import MAX_CONSECUTIVE_FAILURES, REQUEST_TIMEOUT, USER_AGENT
+from .config import MAX_CONSECUTIVE_FAILURES
 from .robots import RobotsCache
-from .rss import fetch_feed
+from .strategies import for_source
+from .strategies.base import StrategyResult
 from .topics import merge_topic_scores, score_text
 
 log = logging.getLogger("longform.ingest")
@@ -36,6 +41,44 @@ class SourceIngestResult:
         return base
 
 
+async def _persist_candidates(
+    *,
+    conn: asyncpg.Connection,
+    source: asyncpg.Record,
+    result: StrategyResult,
+    topic_ids_by_slug: dict[str, Any],
+) -> int:
+    """Insert candidate articles + topics for one strategy round. Returns count inserted."""
+    defaults = await db.get_source_default_topics(conn, source["id"])
+    inserted = 0
+    for cand in result.candidates:
+        article_id = await db.insert_article(
+            conn,
+            source_id=source["id"],
+            title=cand.title,
+            canonical_url=cand.canonical_url,
+            author=cand.author,
+            publication_date=cand.publication_date,
+            description=cand.description,
+            og_image_url=cand.og_image_url,
+            content_policy=source["content_policy"],
+            word_count=cand.word_count,
+            reading_time_minutes=cand.reading_time_minutes,
+        )
+        if article_id is None:
+            continue
+        inserted += 1
+        text = " ".join(filter(None, [cand.title, cand.description]))
+        scored = merge_topic_scores(score_text(text), defaults)
+        attachments = [
+            (topic_ids_by_slug[slug], weight)
+            for slug, weight in scored
+            if slug in topic_ids_by_slug
+        ]
+        await db.attach_topics(conn, article_id=article_id, topic_id_weights=attachments)
+    return inserted
+
+
 async def _ingest_one(
     *,
     client: httpx.AsyncClient,
@@ -48,117 +91,52 @@ async def _ingest_one(
     started_at = datetime.now(timezone.utc)
     slug = source["slug"]
 
-    if not source["rss_url"]:
-        result = SourceIngestResult(source_slug=slug, status="NO_RSS")
-        await db.update_source_ingest_state(
-            conn, source_id=source["id"], status="NO_RSS",
-            etag=source["last_ingest_etag"], last_modified=source["last_ingest_modified"],
-            inserted_count=0, error=None,
-        )
-        await db.insert_ingestion_run(
-            conn, source_id=source["id"], status="NO_RSS", articles_seen=0,
-            articles_inserted=0, http_status=None, error_message=None,
-            triggered_by=triggered_by, started_at=started_at,
-        )
-        return result
-
+    strategy = for_source(source["fetch_strategy"])
     try:
-        feed = await fetch_feed(
-            client,
-            source["rss_url"],
-            etag=source["last_ingest_etag"],
-            last_modified=source["last_ingest_modified"],
-            robots=robots,
-        )
-    except httpx.HTTPError as exc:
-        result = SourceIngestResult(
-            source_slug=slug, status="ERROR", error_message=str(exc),
-        )
-        await db.update_source_ingest_state(
-            conn, source_id=source["id"], status="ERROR",
-            etag=source["last_ingest_etag"], last_modified=source["last_ingest_modified"],
-            inserted_count=0, error=str(exc),
-        )
-        await db.deactivate_if_failing(conn, source["id"], MAX_CONSECUTIVE_FAILURES)
-        await db.insert_ingestion_run(
-            conn, source_id=source["id"], status="ERROR",
-            articles_seen=0, articles_inserted=0,
-            http_status=None, error_message=str(exc),
-            triggered_by=triggered_by, started_at=started_at,
-        )
-        return result
+        result = await strategy.fetch(client=client, source=source, robots=robots)
+    except Exception as exc:  # noqa: BLE001 — strategies should not raise; if one does, isolate it
+        log.exception("strategy error for %s", slug)
+        result = StrategyResult(status="ERROR", error_message=str(exc))
 
-    if feed.http_status == 0:
-        # robots blocked
-        await db.update_source_ingest_state(
-            conn, source_id=source["id"], status="BLOCKED",
-            etag=source["last_ingest_etag"], last_modified=source["last_ingest_modified"],
-            inserted_count=0, error="robots.txt disallowed",
-        )
-        await db.insert_ingestion_run(
-            conn, source_id=source["id"], status="BLOCKED",
-            articles_seen=0, articles_inserted=0, http_status=0,
-            error_message="robots.txt disallowed",
-            triggered_by=triggered_by, started_at=started_at,
-        )
-        return SourceIngestResult(source_slug=slug, status="BLOCKED", http_status=0)
-
-    if feed.not_modified:
-        await db.update_source_ingest_state(
-            conn, source_id=source["id"], status="NO_CHANGES",
-            etag=feed.etag, last_modified=feed.last_modified,
-            inserted_count=0, error=None,
-        )
-        await db.insert_ingestion_run(
-            conn, source_id=source["id"], status="NO_CHANGES",
-            articles_seen=0, articles_inserted=0, http_status=304,
-            error_message=None, triggered_by=triggered_by, started_at=started_at,
-        )
-        return SourceIngestResult(
-            source_slug=slug, status="NO_CHANGES", http_status=304,
-        )
-
-    defaults = await db.get_source_default_topics(conn, source["id"])
     inserted = 0
-    for item in feed.items:
-        article_id = await db.insert_article(
-            conn,
-            source_id=source["id"],
-            title=item.title,
-            canonical_url=item.canonical_url,
-            author=item.author,
-            publication_date=item.publication_date,
-            description=item.description,
-            og_image_url=item.og_image_url,
-            content_policy=source["content_policy"],
+    if result.status == "OK":
+        inserted = await _persist_candidates(
+            conn=conn, source=source, result=result, topic_ids_by_slug=topic_ids_by_slug,
         )
-        if article_id is None:
-            continue  # already exists, skip
-        inserted += 1
 
-        text = " ".join(filter(None, [item.title, item.description]))
-        scored = merge_topic_scores(score_text(text), defaults)
-        attachments = [
-            (topic_ids_by_slug[slug], weight)
-            for slug, weight in scored
-            if slug in topic_ids_by_slug
-        ]
-        await db.attach_topics(conn, article_id=article_id, topic_id_weights=attachments)
-
+    # Persist state. For non-RSS strategies etag/last_modified stay as-is on
+    # the source row; the RSS strategy populates them via StrategyResult.
     await db.update_source_ingest_state(
-        conn, source_id=source["id"], status="OK",
-        etag=feed.etag, last_modified=feed.last_modified,
-        inserted_count=inserted, error=None,
+        conn,
+        source_id=source["id"],
+        status=result.status,
+        etag=result.etag if result.etag is not None else source["last_ingest_etag"],
+        last_modified=result.last_modified if result.last_modified is not None
+                      else source["last_ingest_modified"],
+        inserted_count=inserted,
+        error=result.error_message,
     )
+    if result.status == "ERROR":
+        await db.deactivate_if_failing(conn, source["id"], MAX_CONSECUTIVE_FAILURES)
     await db.insert_ingestion_run(
-        conn, source_id=source["id"], status="OK",
-        articles_seen=len(feed.items), articles_inserted=inserted,
-        http_status=feed.http_status, error_message=None,
-        triggered_by=triggered_by, started_at=started_at,
+        conn,
+        source_id=source["id"],
+        status=result.status,
+        articles_seen=len(result.candidates),
+        articles_inserted=inserted,
+        http_status=result.http_status,
+        error_message=result.error_message,
+        triggered_by=triggered_by,
+        started_at=started_at,
     )
+
     return SourceIngestResult(
-        source_slug=slug, status="OK", articles_seen=len(feed.items),
-        articles_inserted=inserted, http_status=feed.http_status,
+        source_slug=slug,
+        status=result.status,
+        articles_seen=len(result.candidates),
+        articles_inserted=inserted,
+        http_status=result.http_status,
+        error_message=result.error_message,
     )
 
 

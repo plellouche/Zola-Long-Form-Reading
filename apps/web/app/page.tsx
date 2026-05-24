@@ -4,6 +4,9 @@ import { redirect } from 'next/navigation';
 import { ArticleCard } from '@/components/article-card';
 import { EmptyState } from '@/components/empty-state';
 import { FeaturedArticleCard } from '@/components/featured-article-card';
+import { LandingHero } from '@/components/landing-hero';
+import { ProductExplainer } from '@/components/product-explainer';
+import { SourceBand } from '@/components/source-band';
 import { getUser } from '@/lib/auth';
 import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
@@ -40,28 +43,32 @@ export default async function HomePage() {
 
   if (!user) {
     return (
-      <main className="mx-auto max-w-5xl px-6 py-16">
-        <section className="max-w-3xl">
-          <p className="font-display text-base tracking-tight text-[hsl(var(--primary))]">Zola</p>
-          <h1 className="mt-4 font-serif text-5xl font-medium leading-[1.05] tracking-tight">
-            Essays worth your evening.
-          </h1>
-          <p className="mt-6 max-w-prose font-serif text-xl leading-relaxed text-[hsl(var(--muted-foreground))]">
-            A high-signal library of essays, reporting, and criticism. Save what you mean to
-            read. Build lists. Follow people whose taste you trust.
+      <main>
+        <LandingHero />
+        <ProductExplainer />
+        <SourceBand />
+        <section className="mx-auto max-w-3xl px-6 py-20 text-center">
+          <h2 className="font-serif text-3xl font-medium tracking-tight">
+            Built for evenings, not endless feeds.
+          </h2>
+          <p className="mx-auto mt-4 max-w-prose font-serif text-lg leading-relaxed text-[hsl(var(--muted-foreground))]">
+            Every article on Zola links out to its original publication —
+            we don&rsquo;t host or paraphrase. Curation is the product. If
+            you want a feed that respects your time and the writers behind
+            the work, you&rsquo;re in the right place.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
-              href="/browse"
-              className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
+              href="/signup"
+              className="rounded-md bg-[hsl(var(--primary))] px-5 py-2.5 text-sm font-medium text-[hsl(var(--primary-foreground))]"
             >
-              Browse articles
+              Sign up
             </Link>
             <Link
-              href="/login"
-              className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium"
+              href="/about"
+              className="rounded-md border border-[hsl(var(--border))] px-5 py-2.5 text-sm font-medium hover:border-[hsl(var(--foreground))]"
             >
-              Sign in
+              Read more about Zola
             </Link>
           </div>
         </section>

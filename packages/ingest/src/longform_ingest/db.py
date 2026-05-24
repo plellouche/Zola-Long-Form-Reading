@@ -25,13 +25,20 @@ async def connection() -> AsyncIterator[asyncpg.Connection]:
         await conn.close()
 
 
+_SOURCE_COLUMNS = """
+    id, slug, name, homepage_url, rss_url, content_policy,
+    last_ingest_etag, last_ingest_modified, consecutive_failures,
+    fetch_strategy, archive_url, archive_link_selector,
+    sitemap_url, sitemap_url_pattern, min_word_count
+"""
+
+
 async def list_active_sources(conn: asyncpg.Connection) -> list[asyncpg.Record]:
     return await conn.fetch(
-        """
-        select id, slug, name, homepage_url, rss_url, content_policy,
-               last_ingest_etag, last_ingest_modified, consecutive_failures
+        f"""
+        select {_SOURCE_COLUMNS}
         from public.sources
-        where is_active = true and rss_url is not null
+        where is_active = true
         order by name
         """
     )
@@ -39,9 +46,8 @@ async def list_active_sources(conn: asyncpg.Connection) -> list[asyncpg.Record]:
 
 async def get_source_by_slug(conn: asyncpg.Connection, slug: str) -> asyncpg.Record | None:
     return await conn.fetchrow(
-        """
-        select id, slug, name, homepage_url, rss_url, content_policy,
-               last_ingest_etag, last_ingest_modified, consecutive_failures
+        f"""
+        select {_SOURCE_COLUMNS}
         from public.sources
         where slug = $1
         """,
@@ -80,20 +86,24 @@ async def insert_article(
     description: str | None,
     og_image_url: str | None,
     content_policy: str,
+    word_count: int | None = None,
+    reading_time_minutes: int | None = None,
 ) -> Any | None:
     """Insert one article. Returns id, or None on canonical_url collision."""
     return await conn.fetchval(
         """
         insert into public.articles (
           source_id, title, canonical_url, author, publication_date,
-          description, og_image_url, content_policy
+          description, og_image_url, content_policy,
+          word_count, reading_time_minutes
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         on conflict (canonical_url) do nothing
         returning id
         """,
         source_id, title, canonical_url, author, publication_date,
         description, og_image_url, content_policy,
+        word_count, reading_time_minutes,
     )
 
 
