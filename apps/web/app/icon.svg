@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#22577A"/>
+  <!-- Chunky Z approximating Bagel Fat One: thick top/bottom bars,
+       wide diagonal, fully-rounded stroke ends. -->
+  <path
+    fill="#FAFAF8"
+    d="M16 14
+       Q14 14 14 16
+       L14 20
+       Q14 22 16 22
+       L34 22
+       L16 44
+       Q14.5 45.5 14 47
+       L14 48
+       Q14 50 16 50
+       L48 50
+       Q50 50 50 48
+       L50 44
+       Q50 42 48 42
+       L30 42
+       L48 20
+       Q49.5 18.5 50 17
+       L50 16
+       Q50 14 48 14
+       Z"
+  />
+</svg>
