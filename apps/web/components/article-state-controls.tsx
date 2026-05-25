@@ -7,9 +7,12 @@ import { getBrowserApiClient } from '@/lib/api';
 import type { UserArticleStatus } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
+type Rating = 'LOVED' | 'LIKED' | 'OK';
+
 type Props = {
   articleId: string;
   initialStatus: UserArticleStatus | null;
+  initialRating?: Rating | null;
 };
 
 const ORDER: UserArticleStatus[] = ['SAVED', 'READING', 'FINISHED', 'DISMISSED'];
@@ -21,9 +24,21 @@ const LABELS: Record<UserArticleStatus, string> = {
   INTERESTED: 'Interested',
 };
 
-export function ArticleStateControls({ articleId, initialStatus }: Props) {
+const RATING_ORDER: Rating[] = ['LOVED', 'LIKED', 'OK'];
+const RATING_LABELS: Record<Rating, string> = {
+  LOVED: 'Loved it',
+  LIKED: 'Liked it',
+  OK: 'It was OK',
+};
+
+export function ArticleStateControls({
+  articleId,
+  initialStatus,
+  initialRating = null,
+}: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<UserArticleStatus | null>(initialStatus);
+  const [rating, setRating] = useState<Rating | null>(initialRating);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +67,25 @@ export function ArticleStateControls({ articleId, initialStatus }: Props) {
     });
   }
 
+  function rate(target: Rating) {
+    setError(null);
+    const newRating: Rating | null = rating === target ? null : target;
+    const prev = rating;
+    setRating(newRating);
+    startTransition(async () => {
+      try {
+        await getBrowserApiClient().request(`/api/me/articles/${articleId}/rating`, {
+          method: 'PUT',
+          body: { rating: newRating },
+        });
+        router.refresh();
+      } catch (err) {
+        setRating(prev);
+        setError(err instanceof ApiError ? err.message : 'Failed');
+      }
+    });
+  }
+
   return (
     <div>
       <div className="flex flex-wrap gap-2">
@@ -75,6 +109,36 @@ export function ArticleStateControls({ articleId, initialStatus }: Props) {
           );
         })}
       </div>
+
+      {status === 'FINISHED' && (
+        <div className="mt-4 rounded-md border border-dashed border-[hsl(var(--border))] p-3">
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            How was it? Helps build your personal canon.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {RATING_ORDER.map((r) => {
+              const active = rating === r;
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => rate(r)}
+                  disabled={pending}
+                  className={
+                    'rounded-md border px-3 py-1 text-sm transition disabled:opacity-50 ' +
+                    (active
+                      ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent))]/15 text-[hsl(var(--accent))]'
+                      : 'border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]')
+                  }
+                >
+                  {RATING_LABELS[r]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );

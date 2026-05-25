@@ -8,6 +8,7 @@ from .routers import (
     discover,
     events,
     ingest,
+    leaderboard,
     lists,
     me_articles,
     recs,
@@ -49,6 +50,7 @@ app.include_router(lists.router)
 app.include_router(social.router)
 app.include_router(recs.router)
 app.include_router(discover.router)
+app.include_router(leaderboard.router)
 app.include_router(admin_invites.router)
 
 

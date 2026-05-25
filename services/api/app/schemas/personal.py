@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .content import ArticleSummary
 
 UserArticleStatus = Literal["SAVED", "READING", "FINISHED", "DISMISSED", "INTERESTED"]
+ArticleRating = Literal["LOVED", "LIKED", "OK"]
 
 
 # ---------- user_article_states ----------
@@ -22,11 +23,18 @@ class UserArticleStateOut(BaseModel):
     opened_at: datetime | None
     finished_at: datetime | None
     time_spent_seconds: int
+    rating: ArticleRating | None = None
     updated_at: datetime
 
 
 class SetArticleStateRequest(BaseModel):
     status: UserArticleStatus
+
+
+class SetArticleRatingRequest(BaseModel):
+    """Rate an already-finished article. Send rating=null to clear."""
+
+    rating: ArticleRating | None
 
 
 class StatefulArticle(BaseModel):

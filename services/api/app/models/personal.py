@@ -36,6 +36,8 @@ class UserArticleState(Base):
     time_spent_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    # Beli-style post-finish rating: LOVED | LIKED | OK | NULL.
+    rating: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

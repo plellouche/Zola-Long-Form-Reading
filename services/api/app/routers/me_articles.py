@@ -15,6 +15,7 @@ from ..database import get_session
 from ..models import Article, ArticleTopic, Event, Source, UserArticleState
 from ..schemas import (
     ArticleSummary,
+    SetArticleRatingRequest,
     SetArticleStateRequest,
     StatefulArticle,
     UserArticleStateOut,
@@ -81,6 +82,52 @@ async def set_state(
                 event_metadata={"from": "user_state"},
             )
         )
+
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+@router.put("/{article_id}/rating", response_model=UserArticleStateOut)
+async def set_rating(
+    article_id: UUID,
+    payload: SetArticleRatingRequest,
+    current: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> UserArticleState:
+    """Set or clear the post-finish rating on an article.
+
+    Rating is independent of status — you can rate an article that isn't
+    marked FINISHED yet, though the UI normally only surfaces this control
+    after a FINISH. We do NOT auto-mark FINISHED here; the front-end is
+    responsible for the status transition.
+    """
+    row = await session.scalar(
+        select(UserArticleState).where(
+            UserArticleState.user_id == current.id,
+            UserArticleState.article_id == article_id,
+        )
+    )
+    if row is None:
+        # No state row yet — create one with status=FINISHED so the rating
+        # has a meaningful anchor. This keeps the rating-without-finish
+        # gesture cheap on the front-end.
+        article = await session.scalar(select(Article).where(Article.id == article_id))
+        if article is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
+        now = datetime.now(timezone.utc)
+        row = UserArticleState(
+            user_id=current.id,
+            article_id=article_id,
+            status="FINISHED",
+            opened_at=now,
+            finished_at=now,
+            rating=payload.rating,
+        )
+        session.add(row)
+    else:
+        row.rating = payload.rating
+        row.updated_at = datetime.now(timezone.utc)
 
     await session.commit()
     await session.refresh(row)

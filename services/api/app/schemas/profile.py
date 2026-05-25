@@ -90,3 +90,14 @@ class ProfileStats(BaseModel):
     avg_minutes: int | None  # mean reading_time_minutes across finished
     current_streak: int  # consecutive days ending today with ≥1 finish
     top_source: dict | None  # {slug, name, count} of the most-finished source
+
+
+class LeaderboardEntry(BaseModel):
+    """One row in the hours-read leaderboard."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    profile: PublicProfile
+    hours_read: float
+    finished_count: int
+    rank: int

@@ -47,6 +47,15 @@ export type ProfileStats = {
   top_source: { slug: string; name: string; count: number } | null;
 };
 
+export type LeaderboardEntry = {
+  profile: PublicProfile;
+  hours_read: number;
+  finished_count: number;
+  rank: number;
+};
+
+export type LeaderboardPeriod = 'week' | 'month' | 'all_time';
+
 export type ActivityItem = {
   event_id: string;
   event_type: string;
@@ -87,12 +96,15 @@ export type SourceDetail = {
 
 export type UserArticleStatus = 'SAVED' | 'READING' | 'FINISHED' | 'DISMISSED' | 'INTERESTED';
 
+export type ArticleRating = 'LOVED' | 'LIKED' | 'OK';
+
 export type UserArticleState = {
   article_id: string;
   status: UserArticleStatus;
   opened_at: string | null;
   finished_at: string | null;
   time_spent_seconds: number;
+  rating: ArticleRating | null;
   updated_at: string;
 };
 

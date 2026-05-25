@@ -72,12 +72,14 @@ export async function generateMetadata({
   }
 }
 
-async function getMyStateForArticle(id: string): Promise<UserArticleStatus | null> {
+async function getMyStateForArticle(
+  id: string,
+): Promise<{ status: UserArticleStatus; rating: 'LOVED' | 'LIKED' | 'OK' | null } | null> {
   try {
-    const state = await getServerApiClient().request<UserArticleState>(
-      `/api/me/articles/${id}/state`,
-    );
-    return state.status;
+    const state = await getServerApiClient().request<
+      UserArticleState & { rating: 'LOVED' | 'LIKED' | 'OK' | null }
+    >(`/api/me/articles/${id}/state`);
+    return { status: state.status, rating: state.rating ?? null };
   } catch (err) {
     if (err instanceof ApiError && (err.status === 404 || err.status === 401)) return null;
     throw err;
@@ -187,7 +189,11 @@ export default async function ArticlePage({
             Tracks where this article is for you. Click a label to toggle it off.
           </p>
           <div className="mt-3">
-            <ArticleStateControls articleId={article.id} initialStatus={myStatus} />
+            <ArticleStateControls
+              articleId={article.id}
+              initialStatus={myStatus?.status ?? null}
+              initialRating={myStatus?.rating ?? null}
+            />
           </div>
         </section>
       )}

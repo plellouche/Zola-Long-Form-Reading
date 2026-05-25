@@ -11,6 +11,7 @@ from .content import (
     SourceUpdate,
 )
 from .personal import (
+    ArticleRating,
     ListBrief,
     ListCreate,
     ListDetail,
@@ -19,12 +20,14 @@ from .personal import (
     ListItemPositions,
     ListReorderRequest,
     ListUpdate,
+    SetArticleRatingRequest,
     SetArticleStateRequest,
     StatefulArticle,
     UserArticleStateOut,
     UserArticleStatus,
 )
 from .profile import (
+    LeaderboardEntry,
     OnboardingRequest,
     ProfileMe,
     ProfileStats,
@@ -36,7 +39,9 @@ from .social import ActivityItem, FollowAck
 
 __all__ = [
     "ActivityItem",
+    "ArticleRating",
     "FollowAck",
+    "LeaderboardEntry",
     "ArticleCreate",
     "ArticleDetail",
     "ArticleSummary",
@@ -51,6 +56,7 @@ __all__ = [
     "ListItemPositions",
     "ListReorderRequest",
     "ListUpdate",
+    "SetArticleRatingRequest",
     "OnboardingRequest",
     "ProfileMe",
     "ProfileStats",
