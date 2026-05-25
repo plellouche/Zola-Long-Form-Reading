@@ -38,6 +38,15 @@ export type PublicProfile = {
   is_self: boolean;
 };
 
+export type ProfileStats = {
+  finished_count: number;
+  hours_read: number;
+  sources_explored: number;
+  avg_minutes: number | null;
+  current_streak: number;
+  top_source: { slug: string; name: string; count: number } | null;
+};
+
 export type ActivityItem = {
   event_id: string;
   event_type: string;

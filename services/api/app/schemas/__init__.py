@@ -27,6 +27,7 @@ from .personal import (
 from .profile import (
     OnboardingRequest,
     ProfileMe,
+    ProfileStats,
     ProfileUpdate,
     PublicProfile,
     TopicOut,
@@ -52,6 +53,7 @@ __all__ = [
     "ListUpdate",
     "OnboardingRequest",
     "ProfileMe",
+    "ProfileStats",
     "ProfileUpdate",
     "PublicProfile",
     "SetArticleStateRequest",

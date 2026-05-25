@@ -4,18 +4,22 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from sqlalchemy import func
 
 from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..auth_admin import maybe_bootstrap_admin
 from ..config import Settings, get_settings
 from ..database import get_session
-from ..models import Follow, Profile, Topic, UserTopic
-from ..schemas import OnboardingRequest, ProfileMe, ProfileUpdate, PublicProfile
+from ..models import Article, Follow, Profile, Source, Topic, UserArticleState, UserTopic
+from ..schemas import (
+    OnboardingRequest,
+    ProfileMe,
+    ProfileStats,
+    ProfileUpdate,
+    PublicProfile,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -149,3 +153,95 @@ async def get_user_by_username(
     out.am_following = am_following
     out.is_self = is_self
     return out
+
+
+@router.get("/{username}/stats", response_model=ProfileStats)
+async def get_user_stats(
+    username: str,
+    session: AsyncSession = Depends(get_session),
+) -> ProfileStats:
+    profile = await session.scalar(
+        select(Profile).where(
+            Profile.username == username.lower(),
+            Profile.onboarded_at.is_not(None),
+        )
+    )
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    finished_q = (
+        select(
+            func.count(UserArticleState.id).label("n"),
+            func.coalesce(func.sum(Article.reading_time_minutes), 0).label("total_minutes"),
+            func.count(func.distinct(Article.source_id)).label("sources"),
+            func.coalesce(func.avg(Article.reading_time_minutes), 0).label("avg_minutes"),
+        )
+        .join(Article, Article.id == UserArticleState.article_id)
+        .where(
+            UserArticleState.user_id == profile.id,
+            UserArticleState.status == "FINISHED",
+        )
+    )
+    row = (await session.execute(finished_q)).one()
+    finished_count = int(row.n or 0)
+    total_minutes = int(row.total_minutes or 0)
+    sources_explored = int(row.sources or 0)
+    avg_minutes_val = float(row.avg_minutes or 0)
+    avg_minutes = int(round(avg_minutes_val)) if finished_count > 0 else None
+
+    # Top source: most-finished publication.
+    top_source_q = (
+        select(
+            Source.slug,
+            Source.name,
+            func.count(UserArticleState.id).label("c"),
+        )
+        .join(Article, Article.id == UserArticleState.article_id)
+        .join(Source, Source.id == Article.source_id)
+        .where(
+            UserArticleState.user_id == profile.id,
+            UserArticleState.status == "FINISHED",
+        )
+        .group_by(Source.id, Source.slug, Source.name)
+        .order_by(func.count(UserArticleState.id).desc())
+        .limit(1)
+    )
+    top_row = (await session.execute(top_source_q)).first()
+    top_source = (
+        {"slug": top_row.slug, "name": top_row.name, "count": int(top_row.c)}
+        if top_row is not None else None
+    )
+
+    # Streak: how many consecutive days ending today have ≥1 finish?
+    # Cheap to compute server-side: pull distinct finish dates for the last
+    # 60 days and walk backward from today. 60 covers any realistic streak.
+    streak_q = (
+        select(
+            func.distinct(func.date(UserArticleState.finished_at)).label("d")
+        )
+        .where(
+            UserArticleState.user_id == profile.id,
+            UserArticleState.status == "FINISHED",
+            UserArticleState.finished_at.is_not(None),
+            UserArticleState.finished_at >= func.now() - text("interval '60 days'"),
+        )
+    )
+    finished_days = {r.d for r in (await session.execute(streak_q)).all() if r.d is not None}
+    streak = 0
+    today = datetime.now(timezone.utc).date()
+    # Allow the streak to "start" today OR yesterday so that someone who
+    # hasn't read yet today doesn't see their N-day streak vanish at midnight.
+    from datetime import timedelta
+    d = today if today in finished_days else today - timedelta(days=1)
+    while d in finished_days:
+        streak += 1
+        d = d - timedelta(days=1)
+
+    return ProfileStats(
+        finished_count=finished_count,
+        hours_read=round(total_minutes / 60, 1),
+        sources_explored=sources_explored,
+        avg_minutes=avg_minutes,
+        current_streak=streak,
+        top_source=top_source,
+    )

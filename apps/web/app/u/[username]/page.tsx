@@ -6,9 +6,11 @@ import { ArticleCard } from '@/components/article-card';
 import { Avatar } from '@/components/avatar';
 import { EmptyState } from '@/components/empty-state';
 import { FollowButton } from '@/components/follow-button';
+import { ProfileStatsCard } from '@/components/profile-stats-card';
 import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 import type {
+  ProfileStats,
   PublicProfile,
   ReadingList,
   StatefulArticle,
@@ -74,6 +76,14 @@ export default async function PublicProfilePage({
 
   const viewer = await getUser();
   const isSelf = profile.is_self;
+
+  // Stats: fail-soft. If the API errors, just hide the card.
+  const stats = await api
+    .request<ProfileStats>(`/api/users/${profile.username}/stats`)
+    .catch((err) => {
+      if (err instanceof ApiError) return null;
+      throw err;
+    });
 
   // Fetch tab payload
   let lists: ReadingList[] = [];
@@ -147,6 +157,8 @@ export default async function PublicProfilePage({
       </div>
 
       {profile.bio && <p className="mt-6 max-w-2xl whitespace-pre-wrap">{profile.bio}</p>}
+
+      {stats && <ProfileStatsCard stats={stats} />}
 
       <nav className="mt-8 flex items-center gap-1 border-b border-[hsl(var(--border))]">
         {(['lists', 'saved', 'read', 'interested'] as Tab[]).map((t) => {

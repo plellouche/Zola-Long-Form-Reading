@@ -74,3 +74,19 @@ class TopicOut(BaseModel):
     name: str
     slug: str
     description: str | None
+
+
+class ProfileStats(BaseModel):
+    """Reading stats for a user's profile card.
+
+    Numbers are derived from `user_article_states` rows with status='FINISHED'
+    plus a join to `articles` for length. Falls back to zeros when the user
+    has no finishes yet.
+    """
+
+    finished_count: int
+    hours_read: float  # sum of reading_time_minutes / 60, rounded to 1 decimal
+    sources_explored: int
+    avg_minutes: int | None  # mean reading_time_minutes across finished
+    current_streak: int  # consecutive days ending today with ≥1 finish
+    top_source: dict | None  # {slug, name, count} of the most-finished source
