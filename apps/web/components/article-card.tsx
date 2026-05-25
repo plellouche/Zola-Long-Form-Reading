@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AccessTierChip } from '@/components/access-tier-chip';
 import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
@@ -7,7 +8,15 @@ import { stripHtml } from '@/lib/utils';
 
 export type ArticleCardData = Pick<
   ArticleSummary,
-  'id' | 'title' | 'author' | 'publication_date' | 'description' | 'og_image_url' | 'reading_time_minutes' | 'source'
+  | 'id'
+  | 'title'
+  | 'author'
+  | 'publication_date'
+  | 'description'
+  | 'og_image_url'
+  | 'reading_time_minutes'
+  | 'access_tier'
+  | 'source'
 >;
 
 type Props = {
@@ -51,8 +60,11 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
           </div>
         )}
         <div className="flex flex-col p-4">
-          <div className="text-[11px] font-medium uppercase tracking-[0.15em] text-[hsl(var(--accent))]">
-            {article.source.name}
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] font-medium uppercase tracking-[0.15em] text-[hsl(var(--accent))]">
+              {article.source.name}
+            </div>
+            <AccessTierChip tier={article.access_tier} />
           </div>
           <h3 className="mt-2 font-serif text-lg font-medium leading-snug">{article.title}</h3>
           {article.description && (

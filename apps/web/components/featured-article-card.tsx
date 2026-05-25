@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AccessTierChip } from '@/components/access-tier-chip';
 import { AddToList } from '@/components/add-to-list';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleCardData } from '@/components/article-card';
@@ -49,11 +50,12 @@ export function FeaturedArticleCard({
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-6 text-white">
-          <div className="text-xs uppercase tracking-wide text-white/80">
+          <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-white/80">
             <span className="inline-block rounded-sm bg-white/10 px-2 py-0.5 backdrop-blur-sm">
               Featured
             </span>
-            <span className="ml-2">{article.source.name}</span>
+            <span>{article.source.name}</span>
+            <AccessTierChip tier={article.access_tier} />
           </div>
           <h2 className="font-serif text-3xl font-medium leading-tight tracking-tight sm:text-4xl">
             {article.title}

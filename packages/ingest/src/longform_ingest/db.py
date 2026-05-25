@@ -88,6 +88,7 @@ async def insert_article(
     content_policy: str,
     word_count: int | None = None,
     reading_time_minutes: int | None = None,
+    access_tier: str = "unknown",
 ) -> Any | None:
     """Insert one article. Returns id, or None on canonical_url collision."""
     return await conn.fetchval(
@@ -95,15 +96,15 @@ async def insert_article(
         insert into public.articles (
           source_id, title, canonical_url, author, publication_date,
           description, og_image_url, content_policy,
-          word_count, reading_time_minutes
+          word_count, reading_time_minutes, access_tier
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         on conflict (canonical_url) do nothing
         returning id
         """,
         source_id, title, canonical_url, author, publication_date,
         description, og_image_url, content_policy,
-        word_count, reading_time_minutes,
+        word_count, reading_time_minutes, access_tier,
     )
 
 

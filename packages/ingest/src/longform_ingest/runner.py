@@ -64,6 +64,7 @@ async def _persist_candidates(
             content_policy=source["content_policy"],
             word_count=cand.word_count,
             reading_time_minutes=cand.reading_time_minutes,
+            access_tier=cand.access_tier,
         )
         if article_id is None:
             continue

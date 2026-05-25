@@ -34,6 +34,7 @@ class ArticleCandidate:
     og_image_url: str | None = None
     word_count: int | None = None
     reading_time_minutes: int | None = None
+    access_tier: str = "unknown"  # free | metered | locked | unknown — see og.ACCESS_TIERS
 
 
 @dataclass

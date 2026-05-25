@@ -5,6 +5,7 @@ import { Bookmark, ChevronDown, Heart, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { AccessTierChip } from '@/components/access-tier-chip';
 import { getBrowserApiClient } from '@/lib/api';
 import type { ArticleSummary } from '@/lib/api-types';
 import { stripHtml } from '@/lib/utils';
@@ -330,11 +331,12 @@ function CardContent({ article }: { article: ArticleSummary }) {
         <div className="h-56 w-full bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--border))]" />
       )}
       <div className="flex flex-1 flex-col gap-3 p-5">
-        <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-          {article.source.name}
-          {date && <span> · {date}</span>}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+          <span>{article.source.name}</span>
+          <AccessTierChip tier={article.access_tier} />
+          {date && <span>· {date}</span>}
           {article.reading_time_minutes && (
-            <span> · {article.reading_time_minutes} min</span>
+            <span>· {article.reading_time_minutes} min</span>
           )}
         </div>
         <h2 className="font-serif text-3xl font-medium leading-tight tracking-tight">

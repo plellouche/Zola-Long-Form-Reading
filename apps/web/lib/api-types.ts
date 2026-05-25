@@ -3,6 +3,8 @@
 
 export type SortKey = 'newest' | 'popular' | 'reading_time_asc';
 
+export type ArticleAccessTier = 'free' | 'metered' | 'locked' | 'unknown';
+
 export type ArticleSummary = {
   id: string;
   source: { id: string; slug: string; name: string };
@@ -14,6 +16,7 @@ export type ArticleSummary = {
   description: string | null;
   reading_time_minutes: number | null;
   content_policy: 'REDIRECT_ONLY' | 'EMBED_ALLOWED' | 'FULLTEXT_ALLOWED';
+  access_tier: ArticleAccessTier;
   quality_score: number;
   created_at: string;
 };

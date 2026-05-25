@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
 from datetime import date
 
@@ -12,6 +14,14 @@ from dateutil import parser as date_parser
 from .config import REQUEST_TIMEOUT, USER_AGENT
 from .rate_limit import host_semaphore
 from .robots import RobotsCache
+
+log = logging.getLogger("longform.ingest.og")
+
+# Allowed values for OgMetadata.access_tier. Mirrored in:
+#   - migration 011 (articles.access_tier check constraint)
+#   - services/api/app/models/content.py Article.access_tier
+#   - apps/web/lib/api-types.ts ArticleAccessTier
+ACCESS_TIERS = ("free", "metered", "locked", "unknown")
 
 
 @dataclass(frozen=True)
@@ -24,6 +34,7 @@ class OgMetadata:
     og_image_url: str | None
     word_count: int | None = None
     reading_time_minutes: int | None = None
+    access_tier: str = "unknown"
 
 
 def _attr(soup: BeautifulSoup, *selectors: tuple[str, dict[str, str]]) -> str | None:
@@ -46,6 +57,65 @@ def _parse_date(value: str | None) -> date | None:
         return date_parser.parse(value).date()
     except (ValueError, TypeError, OverflowError):
         return None
+
+
+def _detect_access_tier(soup: BeautifulSoup) -> str:
+    """Infer paywall state from publisher-emitted metadata.
+
+    Sources in priority order:
+      1. <meta property="article:content_tier" content="free|metered|locked">
+         Used honestly by NYer, Atlantic, NYT, WaPo, Wired, Bloomberg, Harper's,
+         New Republic. Value maps 1:1 to our tier.
+      2. schema.org JSON-LD `isAccessibleForFree` (true|false). When false, tier
+         is at least 'metered'; we can't distinguish locked from metered from
+         this signal alone.
+      3. `isAccessibleForFree` as a meta itemprop on the page body.
+
+    Default 'unknown' when no signal is present (most independent publishers).
+    Callers (UI) treat 'unknown' as 'no chip'.
+    """
+    # 1. article:content_tier — honored by most major paywalled outlets.
+    tier_meta = soup.find("meta", attrs={"property": "article:content_tier"})
+    if tier_meta is None:
+        tier_meta = soup.find("meta", attrs={"name": "article:content_tier"})
+    if tier_meta is not None:
+        value = (tier_meta.get("content") or "").strip().lower()
+        if value in ("free", "metered", "locked"):
+            return value
+        # Some publishers use 'paid' or 'subscriber' synonyms for 'locked'.
+        if value in ("paid", "subscriber", "subscription"):
+            return "locked"
+
+    # 2. JSON-LD isAccessibleForFree (schema.org Article/NewsArticle).
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = script.string or script.get_text()
+        if not raw or "isAccessibleForFree" not in raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        # JSON-LD can be a single object or an array.
+        candidates = data if isinstance(data, list) else [data]
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            val = item.get("isAccessibleForFree")
+            if val is False or (isinstance(val, str) and val.lower() == "false"):
+                return "metered"  # could be locked; treat as metered to be generous
+            if val is True or (isinstance(val, str) and val.lower() == "true"):
+                return "free"
+
+    # 3. itemprop fallback (rare but seen on some Vox/Recode-era pages).
+    item = soup.find(attrs={"itemprop": "isAccessibleForFree"})
+    if item is not None:
+        content = (item.get("content") or item.get_text() or "").strip().lower()
+        if content == "false":
+            return "metered"
+        if content == "true":
+            return "free"
+
+    return "unknown"
 
 
 def _estimate_word_count(soup: BeautifulSoup) -> int:
@@ -95,6 +165,8 @@ def parse_html(url: str, html: str) -> OgMetadata:
     # ~225 wpm is a reasonable average for long-form reading.
     reading_time = max(1, round(word_count / 225)) if word_count else None
 
+    access_tier = _detect_access_tier(soup)
+
     return OgMetadata(
         canonical_url=canonical,
         title=title,
@@ -104,6 +176,7 @@ def parse_html(url: str, html: str) -> OgMetadata:
         og_image_url=image,
         word_count=word_count or None,
         reading_time_minutes=reading_time,
+        access_tier=access_tier,
     )
 
 

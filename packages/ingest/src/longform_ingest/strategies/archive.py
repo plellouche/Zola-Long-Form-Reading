@@ -114,6 +114,7 @@ class ArchiveStrategy(Strategy):
                     og_image_url=meta.og_image_url,
                     word_count=meta.word_count,
                     reading_time_minutes=meta.reading_time_minutes,
+                    access_tier=meta.access_tier,
                 )
             )
 

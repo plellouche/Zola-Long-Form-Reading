@@ -61,6 +61,7 @@ class Source(Base):
     archive_link_selector: Mapped[str | None] = mapped_column(Text, nullable=True)
     sitemap_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sitemap_url_pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paywall_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
     min_word_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
@@ -91,6 +92,9 @@ class Article(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     reading_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    access_tier: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
     content_policy: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'REDIRECT_ONLY'")
     )

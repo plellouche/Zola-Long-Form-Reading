@@ -228,6 +228,7 @@ async def create_article(
         description=payload.description,
         reading_time_minutes=payload.reading_time_minutes,
         word_count=payload.word_count,
+        access_tier=payload.access_tier,
         content_policy=payload.content_policy or source.content_policy,
         quality_score=payload.quality_score,
         submitted_by=admin.id,
