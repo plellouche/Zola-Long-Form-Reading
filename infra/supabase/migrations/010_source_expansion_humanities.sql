@@ -74,6 +74,9 @@ on conflict (slug) do nothing;
 
 -- The Dial: international longform, founded 2022. Sitemap lists
 -- /articles/{category}/{slug} for every published piece. No RSS endpoint.
+-- The negative lookahead excludes /articles/category/* and /articles/tag/*
+-- index pages, which would otherwise match the 2-segment-after-/articles/
+-- pattern (added 2026-05-25 after 18 false-positive rows landed).
 insert into public.sources (
   slug, name, homepage_url, kind,
   fetch_strategy, sitemap_url, sitemap_url_pattern, min_word_count
@@ -85,7 +88,7 @@ values (
   'PUBLICATION',
   'sitemap',
   'https://www.thedial.world/sitemap.xml',
-  '^https://www\.thedial\.world/articles/[^/]+/[^/]+/?$',
+  '^https://www\.thedial\.world/articles/(?!category/|tag/)[^/]+/[^/]+/?$',
   600
 )
 on conflict (slug) do nothing;
