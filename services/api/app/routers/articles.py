@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import ColumnElement, and_, func, or_, select, tuple_
+from sqlalchemy.orm import aliased
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +26,7 @@ from ..schemas import (
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
 
-SortKey = Literal["newest", "popular", "reading_time_asc"]
+SortKey = Literal["mixed", "newest", "popular", "reading_time_asc"]
 
 
 class ArticleListResponse(BaseModel):
@@ -48,9 +49,12 @@ def _detail(article: Article) -> ArticleDetail:
     return base
 
 
+# 'mixed' uses the same underlying sort as 'newest' (by created_at) but
+# reorders the fetched window to round-robin across sources so the top of
+# /browse isn't dominated by whichever publisher we ingested last.
 def _sort_columns(sort: SortKey) -> tuple[ColumnElement, ColumnElement]:
     """Return (key_column, id_column) for the requested sort. Descending order."""
-    if sort == "newest":
+    if sort in ("newest", "mixed"):
         return Article.created_at, Article.id
     if sort == "popular":
         return Article.save_count, Article.id
@@ -60,7 +64,7 @@ def _sort_columns(sort: SortKey) -> tuple[ColumnElement, ColumnElement]:
 
 
 def _row_cursor_value(article: Article, sort: SortKey):
-    if sort == "newest":
+    if sort in ("newest", "mixed"):
         return article.created_at
     if sort == "popular":
         return article.save_count
@@ -71,11 +75,101 @@ def _row_cursor_value(article: Article, sort: SortKey):
 
 def _parse_cursor_value(sort: SortKey, raw_key):
     """Coerce JSON-decoded cursor key back to the column's Python type."""
-    if sort == "newest":
+    if sort in ("newest", "mixed"):
         if isinstance(raw_key, str):
             return datetime.fromisoformat(raw_key)
         return raw_key
     return raw_key
+
+
+async def _execute_mixed(
+    session: AsyncSession,
+    *,
+    filter_clauses: list,
+    join_clauses: list,
+    cursor: str | None,
+    limit: int,
+) -> ArticleListResponse:
+    """Source-balanced article feed.
+
+    Uses a window function to rank each source's articles by recency, then
+    orders globally by (rank ASC, created_at DESC). Page 1 = newest from each
+    source in recency order. Page 2 = second-newest from each source. Etc.
+
+    Cursor encodes the (src_rank, created_at) pair as 'rank|isotime' so we
+    can keyset-paginate even though the sort key spans two columns with
+    different directions.
+    """
+    src_rank = (
+        func.row_number()
+        .over(
+            partition_by=Article.source_id,
+            order_by=[Article.created_at.desc(), Article.id.desc()],
+        )
+        .label("src_rank")
+    )
+    ranked_q = select(Article, src_rank)
+    for j in join_clauses:
+        ranked_q = ranked_q.join(*j)
+    for w in filter_clauses:
+        ranked_q = ranked_q.where(w)
+    ranked = ranked_q.subquery()
+
+    # Re-hydrate Article rows so SQLAlchemy returns mapped entities.
+    A = aliased(Article, ranked)
+    rank_col = ranked.c.src_rank
+
+    stmt = select(A, rank_col).order_by(
+        rank_col.asc(), ranked.c.created_at.desc(), ranked.c.id.desc()
+    )
+
+    if cursor:
+        try:
+            raw_key, last_id = decode_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+            ) from exc
+        # raw_key shape: "<rank>|<iso datetime>"
+        try:
+            rank_part, ts_part = str(raw_key).split("|", 1)
+            cur_rank = int(rank_part)
+            cur_ts = datetime.fromisoformat(ts_part)
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Bad mixed cursor: {exc}"
+            ) from exc
+        # rank ASC, created_at DESC, id DESC — compound predicate.
+        stmt = stmt.where(
+            or_(
+                rank_col > cur_rank,
+                and_(rank_col == cur_rank, ranked.c.created_at < cur_ts),
+                and_(
+                    rank_col == cur_rank,
+                    ranked.c.created_at == cur_ts,
+                    ranked.c.id < last_id,
+                ),
+            )
+        )
+
+    stmt = stmt.limit(limit + 1)
+    result = await session.execute(stmt)
+    rows = list(result.unique().all())  # [(Article, src_rank), ...]
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    next_cursor: str | None = None
+    if has_more and rows:
+        last_article, last_rank = rows[-1]
+        next_cursor = encode_cursor(
+            f"{int(last_rank)}|{last_article.created_at.isoformat()}",
+            last_article.id,
+        )
+
+    return ArticleListResponse(
+        items=[_summary(a) for (a, _) in rows],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("", response_model=ArticleListResponse)
@@ -121,25 +215,43 @@ async def _execute(
     cursor: str | None,
     limit: int,
 ) -> ArticleListResponse:
-    stmt = select(Article).where(arachnid_exclude_clause(Article))
+    # Filter/join clauses collected for either path (linear sort or mixed).
+    filter_clauses: list = [arachnid_exclude_clause(Article)]
+    join_clauses: list = []
 
     if source_slug:
-        stmt = stmt.join(Source).where(Source.slug == source_slug.lower())
+        join_clauses.append((Source,))
+        filter_clauses.append(Source.slug == source_slug.lower())
     if topic_slug:
-        stmt = stmt.join(ArticleTopic, ArticleTopic.article_id == Article.id).join(
-            Topic, Topic.id == ArticleTopic.topic_id
-        ).where(Topic.slug == topic_slug.lower())
+        join_clauses.append((ArticleTopic, ArticleTopic.article_id == Article.id))
+        join_clauses.append((Topic, Topic.id == ArticleTopic.topic_id))
+        filter_clauses.append(Topic.slug == topic_slug.lower())
     if min_reading_time is not None:
-        stmt = stmt.where(Article.reading_time_minutes >= min_reading_time)
+        filter_clauses.append(Article.reading_time_minutes >= min_reading_time)
     if max_reading_time is not None:
-        stmt = stmt.where(Article.reading_time_minutes <= max_reading_time)
+        filter_clauses.append(Article.reading_time_minutes <= max_reading_time)
     if from_date is not None:
-        stmt = stmt.where(Article.publication_date >= from_date)
+        filter_clauses.append(Article.publication_date >= from_date)
     if to_date is not None:
-        stmt = stmt.where(Article.publication_date <= to_date)
+        filter_clauses.append(Article.publication_date <= to_date)
     if q and q.strip():
         ts_query = func.websearch_to_tsquery("english", q)
-        stmt = stmt.where(Article.search_tsv.op("@@")(ts_query))
+        filter_clauses.append(Article.search_tsv.op("@@")(ts_query))
+
+    if sort == "mixed":
+        return await _execute_mixed(
+            session,
+            filter_clauses=filter_clauses,
+            join_clauses=join_clauses,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    stmt = select(Article)
+    for j in join_clauses:
+        stmt = stmt.join(*j)
+    for w in filter_clauses:
+        stmt = stmt.where(w)
 
     key_col, id_col = _sort_columns(sort)
     ascending = sort == "reading_time_asc"

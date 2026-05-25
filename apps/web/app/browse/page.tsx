@@ -27,7 +27,12 @@ function buildQuery(p: SearchParams): Record<string, string> {
   if (p.max_minutes) out.max_reading_time = p.max_minutes;
   if (p.from_date) out.from_date = p.from_date;
   if (p.to_date) out.to_date = p.to_date;
-  if (p.sort) out.sort = p.sort;
+  // Default to 'mixed' so the top of the feed shows source variety instead
+  // of being dominated by whichever publisher we ingested last. Filtered
+  // queries (q / source / topic) keep their explicit sort or fall back to
+  // 'newest' since variety doesn't add anything when results are narrowed.
+  const defaultSort = p.q || p.source || p.topic ? 'newest' : 'mixed';
+  out.sort = p.sort || defaultSort;
   return out;
 }
 
@@ -56,7 +61,7 @@ export default async function BrowsePage({
     params.max_minutes && `≤${params.max_minutes} min`,
     params.from_date && `from ${params.from_date}`,
     params.to_date && `to ${params.to_date}`,
-    params.sort && params.sort !== 'newest' && `sort: ${params.sort}`,
+    params.sort && params.sort !== 'newest' && params.sort !== 'mixed' && `sort: ${params.sort}`,
   ].filter(Boolean);
 
   return (

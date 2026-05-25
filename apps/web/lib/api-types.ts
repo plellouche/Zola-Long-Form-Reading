@@ -1,7 +1,7 @@
 // Shared client-side types mirroring the FastAPI response shapes.
 // Keep in sync with services/api/app/schemas/* and routers/*.
 
-export type SortKey = 'newest' | 'popular' | 'reading_time_asc';
+export type SortKey = 'mixed' | 'newest' | 'popular' | 'reading_time_asc';
 
 export type ArticleAccessTier = 'free' | 'metered' | 'locked' | 'unknown';
 

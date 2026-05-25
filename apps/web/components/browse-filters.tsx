@@ -18,6 +18,7 @@ type Props = {
 };
 
 const SORT_LABELS: Record<SortKey, string> = {
+  mixed: 'Mixed sources',
   newest: 'Newest',
   popular: 'Most saved',
   reading_time_asc: 'Shortest first',
@@ -79,7 +80,17 @@ export function BrowseFilters({ sources, topics, basePath = '/browse', selected 
 
         <label className="flex flex-col gap-1.5">
           <span className={labelCls}>Sort</span>
-          <select name="sort" defaultValue={selected.sort ?? 'newest'} className={inputCls}>
+          <select
+            name="sort"
+            // Match the server's defaulting rule (apps/web/app/browse/page.tsx
+            // buildQuery): filtered queries default to 'newest', the wide
+            // browse view defaults to 'mixed'.
+            defaultValue={
+              selected.sort ??
+              (selected.q || selected.source || selected.topic ? 'newest' : 'mixed')
+            }
+            className={inputCls}
+          >
             {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
               <option key={k} value={k}>
                 {SORT_LABELS[k]}
