@@ -11,17 +11,19 @@ pip install -r requirements.txt
 pip install ../../packages/ingest
 ```
 
-### Local dev gotcha: re-installing `packages/ingest`
+### Local dev: installing `packages/ingest`
 
-The ingest package is intentionally installed **non-editable** locally (not `pip install -e`). The reason: macOS, on this Documents-folder path with spaces, auto-applies `UF_HIDDEN` to `.pth` files in `site-packages`, which makes Python's `site.py` skip the PEP 660 editable-install pointer. Non-editable side-steps the issue entirely.
-
-Trade-off: when you change code under `packages/ingest`, you need to reinstall:
+Use the repo-root Makefile target, which does the editable install plus the macOS post-install fixup in one command:
 
 ```bash
-pip install --force-reinstall --no-deps ../../packages/ingest
+make install-ingest-dev
 ```
 
-On Linux (CI / Render), editable installs work fine — the GitHub Actions workflow installs the package fresh per run, so there's no equivalent friction in production.
+Why a special target: setuptools' editable install writes a `.pth` file in `site-packages` with macOS' `UF_HIDDEN` flag set (long-standing setuptools quirk). Python 3.12+'s `site.addpackage` then skips the file as hidden (`Skipping hidden .pth file: …`) and `import longform_ingest` silently fails. `make install-ingest-dev` runs `chflags -R nohidden` on `site-packages` immediately after install — confirmed working.
+
+With editable mode on, code changes under `packages/ingest/src/` are picked up without reinstall. Re-run `make install-ingest-dev` only when `pyproject.toml` changes or when the venv has been wiped.
+
+Production (Render + GHA) uses a non-editable `pip install ./packages/ingest`, which is not affected by this bug.
 
 ## Run dev server
 
