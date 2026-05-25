@@ -7,7 +7,7 @@ import { ListItemRow } from './list-item-row';
 import { ListSettings } from './list-settings';
 import { ArticleCard } from '@/components/article-card';
 import { getUser } from '@/lib/auth';
-import { getSavedArticleIds } from '@/lib/me';
+import { getFinishedArticleIds, getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
 import type { ArticleSummary, ReadingListDetail } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
@@ -56,10 +56,9 @@ export default async function ListDetailPage({
   }
 
   const isOwner = !!user && user.id === list.user_id;
-  const items = list.items;
 
-  const [suggestions, savedIds] = await Promise.all([
-    items.length > 0
+  const [suggestions, savedIds, finishedIds] = await Promise.all([
+    list.items.length > 0
       ? api
           .request<ArticleSummary[]>(`/api/lists/${id}/recommendations`, { query: { limit: '6' } })
           .catch((err) => {
@@ -68,8 +67,21 @@ export default async function ListDetailPage({
           })
       : Promise.resolve<ArticleSummary[]>([]),
     user ? getSavedArticleIds() : Promise.resolve<string[]>([]),
+    user ? getFinishedArticleIds() : Promise.resolve<string[]>([]),
   ]);
   const savedSet = new Set(savedIds);
+  const finishedSet = new Set(finishedIds);
+
+  // Visual reorder only — preserve curator ordering in the DB. Unread items
+  // surface first, then read items, each group keeping its relative order.
+  // `position` shown to the user reflects the visual order, not the stored
+  // position; the move/remove actions still find the right row by article id.
+  const items = [...list.items].sort((a, b) => {
+    const aRead = finishedSet.has(a.article.id) ? 1 : 0;
+    const bRead = finishedSet.has(b.article.id) ? 1 : 0;
+    return aRead - bRead || a.position - b.position;
+  });
+  const unreadCount = items.filter((it) => !finishedSet.has(it.article.id)).length;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
@@ -84,7 +96,11 @@ export default async function ListDetailPage({
         )}
         <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">
           {list.is_public ? 'Public list' : 'Private list'} · {items.length}{' '}
-          {items.length === 1 ? 'article' : 'articles'} · Updated{' '}
+          {items.length === 1 ? 'article' : 'articles'}
+          {user && items.length > 0 && (
+            <> · {unreadCount} unread</>
+          )}
+          {' '}· Updated{' '}
           {new Date(list.updated_at).toLocaleDateString()}
         </p>
       </header>
@@ -116,6 +132,7 @@ export default async function ListDetailPage({
               position={idx + 1}
               total={items.length}
               canEdit={isOwner}
+              isRead={finishedSet.has(it.article.id)}
             />
           ))
         )}

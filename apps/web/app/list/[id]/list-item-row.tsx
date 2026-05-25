@@ -14,9 +14,19 @@ type Props = {
   position: number;
   total: number;
   canEdit: boolean;
+  /** When true, render the row as already-read: muted text, dim image, "Read"
+   *  badge. The page component sorts read items to the bottom of the list. */
+  isRead?: boolean;
 };
 
-export function ListItemRow({ listId, item, position, total, canEdit }: Props) {
+export function ListItemRow({
+  listId,
+  item,
+  position,
+  total,
+  canEdit,
+  isRead = false,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -76,19 +86,40 @@ export function ListItemRow({ listId, item, position, total, canEdit }: Props) {
     : null;
 
   return (
-    <li className="flex items-stretch gap-3 rounded-lg border border-[hsl(var(--border))] p-3">
+    <li
+      className={`flex items-stretch gap-3 rounded-lg border border-[hsl(var(--border))] p-3 transition ${
+        isRead ? 'opacity-55 hover:opacity-80' : ''
+      }`}
+    >
       <div className="flex w-10 shrink-0 flex-col items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">
         {position}
       </div>
       {a.og_image_url && (
-        <Link href={`/article/${a.id}`} className="hidden w-32 shrink-0 overflow-hidden rounded-md bg-[hsl(var(--muted))] sm:block">
+        <Link
+          href={`/article/${a.id}`}
+          className={`hidden w-32 shrink-0 overflow-hidden rounded-md bg-[hsl(var(--muted))] sm:block ${
+            isRead ? 'grayscale' : ''
+          }`}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={a.og_image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
         </Link>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">{a.source.name}</div>
-        <Link href={`/article/${a.id}`} className="mt-1 block font-medium leading-snug hover:underline">
+        <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+          <span>{a.source.name}</span>
+          {isRead && (
+            <span className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+              Read
+            </span>
+          )}
+        </div>
+        <Link
+          href={`/article/${a.id}`}
+          className={`mt-1 block font-medium leading-snug hover:underline ${
+            isRead ? 'text-[hsl(var(--muted-foreground))]' : ''
+          }`}
+        >
           {a.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">

@@ -34,3 +34,24 @@ export async function getSavedArticleIds(): Promise<string[]> {
     throw err;
   }
 }
+
+/**
+ * Fetch the IDs of articles the current user has FINISHED.
+ * Used by list pages to gray out + push read items to the bottom.
+ *
+ * Returns `[]` if the user isn't logged in or the API call fails.
+ */
+export async function getFinishedArticleIds(): Promise<string[]> {
+  const user = await getUser();
+  if (!user) return [];
+  try {
+    const states = await getServerApiClient().request<StatefulArticle[]>(
+      '/api/me/articles',
+      { query: { status: 'FINISHED', limit: '500' } },
+    );
+    return states.map((s) => s.article.id);
+  } catch (err) {
+    if (err instanceof ApiError) return [];
+    throw err;
+  }
+}
