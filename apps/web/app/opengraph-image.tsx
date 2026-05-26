@@ -1,21 +1,17 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { ImageResponse } from 'next/og';
 
-// Default OG image used by every page that doesn't declare its own.
-// Auto-discovered by Next.js 15 from `app/opengraph-image.tsx`.
-//
-// Uses the vendored Bagel Fat One font (apps/web/app/_fonts) so the
-// wordmark matches the in-app nav. We tried fetching from Google Fonts
-// at build time but the response was HTML without a browser UA — vendor
-// it instead.
-
+// Default OG image. Same font-loading pattern as icon.tsx — see notes there.
 export const alt = 'Zola — long-form reading';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 export default async function OG() {
-  const fontData = await fetch(
-    new URL('./_fonts/BagelFatOne-Latin.woff2', import.meta.url),
-  ).then((r) => r.arrayBuffer());
+  const fontData = await readFile(
+    join(process.cwd(), 'app', '_fonts', 'BagelFatOne-Latin.woff2'),
+  );
 
   return new ImageResponse(
     (
