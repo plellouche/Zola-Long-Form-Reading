@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { AccessTierChip } from '@/components/access-tier-chip';
 import { AddToList } from '@/components/add-to-list';
+import { ArticleImageFallback } from '@/components/article-image-fallback';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleCardData } from '@/components/article-card';
 import { stripHtml } from '@/lib/utils';
@@ -46,7 +47,12 @@ export function FeaturedArticleCard({
             loading="lazy"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--border))]" />
+          <div className="absolute inset-0">
+            <ArticleImageFallback
+              seed={article.id}
+              sourceName={article.source.name}
+            />
+          </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-6 text-white">
@@ -65,17 +71,25 @@ export function FeaturedArticleCard({
               {stripHtml(article.description)}
             </p>
           )}
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/70">
-            {article.author && <span>{article.author}</span>}
-            {article.author && date && <span>·</span>}
-            {date && <span>{date}</span>}
-            {article.reading_time_minutes != null && (
-              <>
-                <span>·</span>
-                <span>{article.reading_time_minutes} min read</span>
-              </>
-            )}
-          </div>
+          {(() => {
+            const parts: string[] = [];
+            if (article.author) parts.push(article.author);
+            if (date) parts.push(date);
+            if (article.reading_time_minutes != null) {
+              parts.push(`${article.reading_time_minutes} min read`);
+            }
+            if (parts.length === 0) return null;
+            return (
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/70">
+                {parts.map((p, i) => (
+                  <span key={i} className="flex items-center gap-2">
+                    {i > 0 && <span aria-hidden="true">·</span>}
+                    {p}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </Link>
     </div>

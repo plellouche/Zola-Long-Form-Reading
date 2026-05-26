@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AccessTierChip } from '@/components/access-tier-chip';
+import { ArticleImageFallback } from '@/components/article-image-fallback';
 import { getBrowserApiClient } from '@/lib/api';
 import type { ArticleSummary } from '@/lib/api-types';
 import { stripHtml } from '@/lib/utils';
@@ -328,7 +329,12 @@ function CardContent({ article }: { article: ArticleSummary }) {
           className="h-56 w-full object-cover"
         />
       ) : (
-        <div className="h-56 w-full bg-gradient-to-br from-[hsl(var(--muted))] to-[hsl(var(--border))]" />
+        <div className="h-56 w-full">
+          <ArticleImageFallback
+            seed={article.id}
+            sourceName={article.source.name}
+          />
+        </div>
       )}
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">

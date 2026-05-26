@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { AccessTierChip } from '@/components/access-tier-chip';
 import { AddToList } from '@/components/add-to-list';
+import { ArticleImageFallback } from '@/components/article-image-fallback';
 import { SaveButton } from '@/components/save-button';
 import type { ArticleSummary } from '@/lib/api-types';
 import { stripHtml } from '@/lib/utils';
@@ -48,17 +49,25 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
         href={`/article/${article.id}`}
         className="block overflow-hidden rounded-lg border border-[hsl(var(--border))] transition duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md hover:border-[hsl(var(--foreground))]"
       >
-        {article.og_image_url && (
-          <div className="overflow-hidden bg-[hsl(var(--muted))]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* Always render an image area so cards have consistent visual
+            rhythm in the grid. Falls back to a muted gradient for the
+            ~250 PG essays and other sparse-metadata articles. */}
+        <div className="aspect-[16/9] overflow-hidden bg-[hsl(var(--muted))]">
+          {article.og_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={article.og_image_url}
               alt=""
-              className="w-full object-cover transition group-hover:scale-[1.02]"
+              className="h-full w-full object-cover transition group-hover:scale-[1.02]"
               loading="lazy"
             />
-          </div>
-        )}
+          ) : (
+            <ArticleImageFallback
+              seed={article.id}
+              sourceName={article.source.name}
+            />
+          )}
+        </div>
         <div className="flex flex-col p-4">
           <div className="flex items-center gap-2">
             <div className="text-[11px] font-medium uppercase tracking-[0.15em] text-[hsl(var(--accent))]">
@@ -72,19 +81,41 @@ export function ArticleCard({ article, showSave = false, initiallySaved = false 
               {stripHtml(article.description)}
             </p>
           )}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
-            {article.author && <span>{article.author}</span>}
-            {article.author && date && <span>·</span>}
-            {date && <span>{date}</span>}
-            {article.reading_time_minutes != null && (
-              <>
-                <span>·</span>
-                <span>{article.reading_time_minutes} min read</span>
-              </>
-            )}
-          </div>
+          <MetaLine
+            author={article.author}
+            date={date}
+            minutes={article.reading_time_minutes}
+          />
         </div>
       </Link>
+    </div>
+  );
+}
+
+/** Render only the parts that exist, joined by a single "·". Skips
+ *  separators on either side of missing fields so no stray dots appear. */
+function MetaLine({
+  author,
+  date,
+  minutes,
+}: {
+  author: string | null;
+  date: string | null;
+  minutes: number | null;
+}) {
+  const parts: string[] = [];
+  if (author) parts.push(author);
+  if (date) parts.push(date);
+  if (minutes != null) parts.push(`${minutes} min read`);
+  if (parts.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
+      {parts.map((p, i) => (
+        <span key={i} className="flex items-center gap-2">
+          {i > 0 && <span aria-hidden="true">·</span>}
+          {p}
+        </span>
+      ))}
     </div>
   );
 }
