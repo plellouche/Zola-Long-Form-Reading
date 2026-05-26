@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import CurrentUser, get_current_user
 from ..database import get_session
+from ..elo import update_elo
 from ..models import Article, ArticleComparison, ArticleTopic, Event, Source, UserArticleState
 from ..schemas import (
     ArticleSummary,
@@ -300,6 +301,19 @@ async def submit_comparison(
         )
     )
     await session.execute(stmt)
+
+    # Apply the Elo update for both articles. Done inside the same
+    # transaction as the comparison insert so they commit atomically;
+    # a Sentry-visible error in update_elo() would roll back the vote too,
+    # which is the right behavior (don't claim we recorded a vote we
+    # couldn't score).
+    await update_elo(
+        session,
+        user_id=current.id,
+        article_a_id=a_id,
+        article_b_id=b_id,
+        winner_id=payload.winner_id,
+    )
     await session.commit()
 
     # Return the next candidate so the UI can prompt again or stop.

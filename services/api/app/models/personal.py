@@ -81,6 +81,27 @@ class ArticleComparison(Base):
     )
 
 
+class ArticleEloRating(Base):
+    """Current Elo score for one (user, article). Updated incrementally
+    inside the pairwise-comparison endpoint; see app/elo.py."""
+
+    __tablename__ = "article_elo_ratings"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True
+    )
+    article_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True
+    )
+    score: Mapped[float] = mapped_column(nullable=False, server_default=text("1200"))
+    comparison_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class ReadingList(Base):
     __tablename__ = "lists"
 

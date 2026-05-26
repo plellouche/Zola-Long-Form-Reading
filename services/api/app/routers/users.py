@@ -12,7 +12,16 @@ from ..auth import CurrentUser, get_current_user, get_current_user_optional
 from ..auth_admin import maybe_bootstrap_admin
 from ..config import Settings, get_settings
 from ..database import get_session
-from ..models import Article, Follow, Profile, Source, Topic, UserArticleState, UserTopic
+from ..models import (
+    Article,
+    ArticleEloRating,
+    Follow,
+    Profile,
+    Source,
+    Topic,
+    UserArticleState,
+    UserTopic,
+)
 from ..schemas import (
     ArticleSummary,
     OnboardingRequest,
@@ -275,6 +284,7 @@ async def get_top_rated(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     from sqlalchemy import case
+    from sqlalchemy.orm import aliased
     # CASE on rating tier; LOVED first, then LIKED, then OK.
     tier_expr = case(
         (UserArticleState.rating == "LOVED", 0),
@@ -283,16 +293,29 @@ async def get_top_rated(
         else_=99,
     )
 
+    # LEFT JOIN Elo: articles without any pairwise vote fall back to the
+    # default 1200, so they sort below ones the user has actually compared.
+    elo = aliased(ArticleEloRating)
+    elo_score = func.coalesce(elo.score, 1200.0)
+
     stmt = (
-        select(Article, UserArticleState.finished_at, tier_expr.label("tier"))
+        select(Article, elo_score.label("elo"), tier_expr.label("tier"))
         .join(Article, Article.id == UserArticleState.article_id)
+        .outerjoin(
+            elo,
+            (elo.user_id == profile.id) & (elo.article_id == UserArticleState.article_id),
+        )
         .where(
             UserArticleState.user_id == profile.id,
             UserArticleState.rating.is_not(None),
         )
-        .order_by(tier_expr.asc(), UserArticleState.finished_at.desc().nullslast())
+        .order_by(
+            tier_expr.asc(),
+            elo_score.desc(),
+            UserArticleState.finished_at.desc().nullslast(),
+        )
         .limit(max(1, min(limit, 50)))
     )
 
     rows = (await session.execute(stmt)).unique().all()
-    return [ArticleSummary.model_validate(a) for (a, _ts, _tier) in rows]
+    return [ArticleSummary.model_validate(a) for (a, _elo, _tier) in rows]
