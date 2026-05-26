@@ -191,6 +191,7 @@ export default async function ArticlePage({
           <div className="mt-3">
             <ArticleStateControls
               articleId={article.id}
+              articleTitle={article.title}
               initialStatus={myStatus?.status ?? null}
               initialRating={myStatus?.rating ?? null}
             />

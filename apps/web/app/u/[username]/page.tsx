@@ -10,6 +10,7 @@ import { ProfileStatsCard } from '@/components/profile-stats-card';
 import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 import type {
+  ArticleSummary,
   ProfileStats,
   PublicProfile,
   ReadingList,
@@ -18,10 +19,11 @@ import type {
 } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
 
-type Tab = 'lists' | 'saved' | 'read' | 'interested';
+type Tab = 'lists' | 'top' | 'saved' | 'read' | 'interested';
 
 const TAB_LABELS: Record<Tab, string> = {
   lists: 'Lists',
+  top: 'Top',
   saved: 'Saved',
   read: 'Read',
   interested: 'Interested',
@@ -61,7 +63,10 @@ export default async function PublicProfilePage({
   const sp = await searchParams;
   const requested = sp.tab;
   const tab: Tab =
-    requested === 'saved' || requested === 'read' || requested === 'interested'
+    requested === 'top' ||
+    requested === 'saved' ||
+    requested === 'read' ||
+    requested === 'interested'
       ? requested
       : 'lists';
   const api = getServerApiClient();
@@ -90,11 +95,23 @@ export default async function PublicProfilePage({
   let savedItems: StatefulArticle[] = [];
   let readItems: StatefulArticle[] = [];
   let interestedItems: StatefulArticle[] = [];
+  let topRated: ArticleSummary[] = [];
 
   if (tab === 'lists') {
     lists = await api.request<ReadingList[]>('/api/lists', {
       query: { username: profile.username },
     });
+  } else if (tab === 'top') {
+    // Public: anyone can see anyone's top-rated. The endpoint orders by
+    // LOVED -> LIKED -> OK, recency tiebreak within each tier.
+    topRated = await api
+      .request<ArticleSummary[]>(`/api/users/${profile.username}/top-rated`, {
+        query: { limit: '30' },
+      })
+      .catch((err) => {
+        if (err instanceof ApiError) return [] as ArticleSummary[];
+        throw err;
+      });
   } else if (tab === 'saved' && isSelf) {
     savedItems = await api.request<StatefulArticle[]>('/api/me/articles', {
       query: { status: 'SAVED' satisfies UserArticleStatus, limit: '60' },
@@ -161,8 +178,10 @@ export default async function PublicProfilePage({
       {stats && <ProfileStatsCard stats={stats} />}
 
       <nav className="mt-8 flex items-center gap-1 border-b border-[hsl(var(--border))]">
-        {(['lists', 'saved', 'read', 'interested'] as Tab[]).map((t) => {
-          const visible = t === 'lists' || isSelf;
+        {(['lists', 'top', 'saved', 'read', 'interested'] as Tab[]).map((t) => {
+          // 'top' is public (it's the personal canon), 'saved/read/interested'
+          // remain self-only because they expose private intent signals.
+          const visible = t === 'lists' || t === 'top' || isSelf;
           if (!visible) return null;
           const active = t === tab;
           return (
@@ -214,6 +233,37 @@ export default async function PublicProfilePage({
                   </li>
                 ))}
               </ul>
+            )}
+          </>
+        )}
+
+        {tab === 'top' && (
+          <>
+            {topRated.length === 0 ? (
+              <EmptyState
+                title={isSelf ? "You haven't rated anything yet." : 'No ratings yet.'}
+                body={
+                  isSelf
+                    ? 'Finish an article and tap Loved / Liked / OK on its page. Ratings build your personal canon and feed the leaderboard.'
+                    : undefined
+                }
+                cta={isSelf ? { label: 'Browse articles', href: '/browse' } : undefined}
+              />
+            ) : (
+              <>
+                <p className="mb-4 text-xs text-[hsl(var(--muted-foreground))]">
+                  Ordered Loved → Liked → OK. Most recent rating in each tier first.
+                </p>
+                <div className="columns-1 gap-4 sm:columns-2 lg:columns-3">
+                  {topRated.map((a) => (
+                    <ArticleCard
+                      key={a.id}
+                      article={a}
+                      showSave={!!viewer}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </>
         )}

@@ -67,7 +67,7 @@ export default async function SourceDetailPage({
       </Link>
 
       <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="max-w-2xl">
           <h1 className="font-serif text-4xl font-medium tracking-tight">{source.name}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
             <a
@@ -79,6 +79,11 @@ export default async function SourceDetailPage({
               {host}
             </a>
           </p>
+          {source.public_description && (
+            <p className="mt-4 font-serif text-lg leading-relaxed text-[hsl(var(--foreground))]">
+              {source.public_description}
+            </p>
+          )}
           <p className="mt-3 flex gap-3 text-sm text-[hsl(var(--muted-foreground))]">
             <span>
               <strong className="text-[hsl(var(--foreground))]">{source.article_count}</strong>{' '}

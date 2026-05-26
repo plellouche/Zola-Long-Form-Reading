@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
+import { ComparePrompt } from '@/components/compare-prompt';
 import { getBrowserApiClient } from '@/lib/api';
 import type { UserArticleStatus } from '@/lib/api-types';
 import { ApiError } from '@longform/api-client';
@@ -11,6 +12,7 @@ type Rating = 'LOVED' | 'LIKED' | 'OK';
 
 type Props = {
   articleId: string;
+  articleTitle: string;
   initialStatus: UserArticleStatus | null;
   initialRating?: Rating | null;
 };
@@ -33,6 +35,7 @@ const RATING_LABELS: Record<Rating, string> = {
 
 export function ArticleStateControls({
   articleId,
+  articleTitle,
   initialStatus,
   initialRating = null,
 }: Props) {
@@ -137,6 +140,14 @@ export function ArticleStateControls({
             })}
           </div>
         </div>
+      )}
+
+      {status === 'FINISHED' && rating !== null && (
+        <ComparePrompt
+          articleId={articleId}
+          articleTitle={articleTitle}
+          rating={rating}
+        />
       )}
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}

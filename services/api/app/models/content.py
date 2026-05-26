@@ -62,6 +62,7 @@ class Source(Base):
     sitemap_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sitemap_url_pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
     paywall_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    public_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     min_word_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )

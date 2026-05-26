@@ -88,6 +88,7 @@ export type SourceDetail = {
   kind: string;
   trust_score: number;
   is_active: boolean;
+  public_description: string | null;
   article_count: number;
   followers_count: number;
   am_following: boolean;

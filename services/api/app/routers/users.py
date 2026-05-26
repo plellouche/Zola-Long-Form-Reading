@@ -14,6 +14,7 @@ from ..config import Settings, get_settings
 from ..database import get_session
 from ..models import Article, Follow, Profile, Source, Topic, UserArticleState, UserTopic
 from ..schemas import (
+    ArticleSummary,
     OnboardingRequest,
     ProfileMe,
     ProfileStats,
@@ -245,3 +246,53 @@ async def get_user_stats(
         current_streak=streak,
         top_source=top_source,
     )
+
+
+# Strictness ordering for rating sort: LOVED first, then LIKED, then OK.
+# Using a CASE expression keeps the query single-pass.
+_RATING_ORDER = {"LOVED": 0, "LIKED": 1, "OK": 2}
+
+
+@router.get("/{username}/top-rated", response_model=list[ArticleSummary])
+async def get_top_rated(
+    username: str,
+    limit: int = 20,
+    session: AsyncSession = Depends(get_session),
+) -> list[ArticleSummary]:
+    """Articles the user rated, ordered LOVED -> LIKED -> OK, recency tiebreak.
+
+    Public — anyone can see anyone's top-rated list (it's the personal canon
+    the gamification loop is meant to surface). Returns ArticleSummary so the
+    same card components work on the consumer.
+    """
+    profile = await session.scalar(
+        select(Profile).where(
+            Profile.username == username.lower(),
+            Profile.onboarded_at.is_not(None),
+        )
+    )
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    from sqlalchemy import case
+    # CASE on rating tier; LOVED first, then LIKED, then OK.
+    tier_expr = case(
+        (UserArticleState.rating == "LOVED", 0),
+        (UserArticleState.rating == "LIKED", 1),
+        (UserArticleState.rating == "OK", 2),
+        else_=99,
+    )
+
+    stmt = (
+        select(Article, UserArticleState.finished_at, tier_expr.label("tier"))
+        .join(Article, Article.id == UserArticleState.article_id)
+        .where(
+            UserArticleState.user_id == profile.id,
+            UserArticleState.rating.is_not(None),
+        )
+        .order_by(tier_expr.asc(), UserArticleState.finished_at.desc().nullslast())
+        .limit(max(1, min(limit, 50)))
+    )
+
+    rows = (await session.execute(stmt)).unique().all()
+    return [ArticleSummary.model_validate(a) for (a, _ts, _tier) in rows]

@@ -45,6 +45,42 @@ class UserArticleState(Base):
     article: Mapped[Article] = relationship(lazy="selectin")
 
 
+class ArticleComparison(Base):
+    """One pairwise comparison ("I preferred A to B") for a user.
+
+    article_a is always the smaller UUID (enforced by check constraint),
+    so the unique (user_id, article_a, article_b) index dedupes both
+    orderings of the same pair.
+    """
+
+    __tablename__ = "article_comparisons"
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_a", "article_b", name="article_comparisons_uniq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    article_a: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    article_b: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    winner_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class ReadingList(Base):
     __tablename__ = "lists"
 

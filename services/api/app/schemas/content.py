@@ -50,6 +50,7 @@ class SourceOut(BaseModel):
     kind: SourceKindType
     trust_score: float
     is_active: bool
+    public_description: str | None = None
     last_ingested_at: datetime | None
     last_ingest_status: str | None = None
     last_ingest_article_count: int = 0

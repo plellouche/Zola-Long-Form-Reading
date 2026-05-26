@@ -37,6 +37,17 @@ class SetArticleRatingRequest(BaseModel):
     rating: ArticleRating | None
 
 
+class SubmitComparisonRequest(BaseModel):
+    """One pairwise vote: "I preferred winner_id to the other article."
+
+    other_id is the article being compared against the one in the URL.
+    winner_id MUST be one of {url_article_id, other_id}.
+    """
+
+    other_id: UUID
+    winner_id: UUID
+
+
 class StatefulArticle(BaseModel):
     """Article + the current user's state for it."""
 

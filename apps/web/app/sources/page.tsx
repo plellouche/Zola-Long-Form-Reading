@@ -12,6 +12,7 @@ type SourceListItem = {
   kind: string;
   article_count: number;
   is_active: boolean;
+  public_description: string | null;
 };
 
 export const metadata: Metadata = {
@@ -62,7 +63,7 @@ export default async function PublicSourcesPage() {
           <li key={s.id}>
             <Link
               href={`/source/${s.slug}`}
-              className="block rounded-lg border border-[hsl(var(--border))] p-4 transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md hover:border-[hsl(var(--foreground))]"
+              className="block h-full rounded-lg border border-[hsl(var(--border))] p-4 transition motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-md hover:border-[hsl(var(--foreground))]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -77,6 +78,11 @@ export default async function PublicSourcesPage() {
                   {s.article_count}
                 </span>
               </div>
+              {s.public_description && (
+                <p className="mt-3 text-sm leading-snug text-[hsl(var(--muted-foreground))]">
+                  {s.public_description}
+                </p>
+              )}
             </Link>
           </li>
         ))}
