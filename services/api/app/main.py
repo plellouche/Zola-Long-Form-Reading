@@ -1,5 +1,11 @@
+import logging
+
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sentry_sdk.integrations.asyncpg import AsyncPGIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from .config import get_settings
 from .routers import (
@@ -18,6 +24,29 @@ from .routers import (
     topics,
     users,
 )
+
+_settings = get_settings()
+
+# Sentry: silent no-op when SENTRY_DSN is unset (which it is in local dev
+# and CI). In production set SENTRY_DSN on Render to start capturing errors.
+if _settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=_settings.sentry_dsn,
+        environment=_settings.sentry_environment,
+        # Sample 10% of requests for transactions; 100% of errors.
+        # Cheap to bump if free-tier quota allows.
+        traces_sample_rate=0.1,
+        # Don't send PII (Sentry auto-scrubs emails/IPs when False).
+        send_default_pii=False,
+        integrations=[
+            StarletteIntegration(),
+            FastApiIntegration(),
+            AsyncPGIntegration(),
+        ],
+    )
+    logging.getLogger("zola.sentry").info(
+        "Sentry initialized for environment=%s", _settings.sentry_environment
+    )
 
 app = FastAPI(title="Zola API", version="0.0.0")
 

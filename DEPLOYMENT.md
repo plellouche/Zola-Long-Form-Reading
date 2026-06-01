@@ -10,7 +10,7 @@ These are intentionally-deferred items that will eventually need to happen. Mark
 - **Vercel Preview env vars** — not set. Means PR-preview deploys build but break at runtime. Re-enable when adopting a PR-based workflow. See [§ Pull-request previews](#pull-request-previews-deferred--re-enable-later) for the exact 3-step recipe.
 - **Render free → Starter ($7/mo)** — switch when the keep-awake hack becomes insufficient or the first user complains about cold-start latency. The keep-Render-awake GH workflow becomes redundant on Starter — delete it then.
 - **Separate Supabase project for previews** — if PR previews matter, you'll want one. Production and preview currently share a database, so risky PR work could corrupt prod data.
-- **Sentry / error tracking** — Phase 17 territory; trigger is the first real user-visible error you didn't catch in logs.
+- **Sentry / error tracking** — SDKs are wired into both FastAPI and Next.js (silent no-op until DSNs are set). One-time setup steps to activate are documented in [§ Monitoring](#monitoring-phase-17-light) below.
 
 ## Topology
 
@@ -360,4 +360,48 @@ Trigger to upgrade Render from Free to Starter ($7/mo):
 
 ---
 
-*Last updated: 2026-05-24, after Phase 11 + Phase 12 close-out (Render live, Resend SMTP configured, end-to-end auth verified on production).*
+## Monitoring (Phase 17 light)
+
+Sentry integration is wired into both FastAPI and Next.js but **inactive until DSNs are set in the hosting envs**. The SDKs initialize as no-ops when their DSN is empty, so the code ships safely before Sentry is configured.
+
+### One-time Sentry setup
+
+1. Create a free account at https://sentry.io. Free tier = 5k errors/month, plenty for an invite-only beta.
+2. Create an org (e.g. `zola`) and **two projects** inside it:
+   - `zola-api` — platform: Python / FastAPI
+   - `zola-web` — platform: JavaScript / Next.js
+3. Copy each project's DSN (Settings → Client Keys (DSN)).
+
+### Env vars to set
+
+**Render** (Settings → Environment for the `zola-api` service):
+- `SENTRY_DSN` — backend project DSN
+- `SENTRY_ENVIRONMENT` — already set to `production` in `render.yaml`
+
+**Vercel** (Settings → Environment Variables, Production scope):
+- `NEXT_PUBLIC_SENTRY_DSN` — frontend project DSN
+- `NEXT_PUBLIC_SENTRY_ENVIRONMENT` — `production`
+- *(Optional, for better stack traces)* `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — enables source map upload at build time. Get the auth token from Sentry → User Settings → Auth Tokens (scope `project:releases`).
+
+Trigger a redeploy on each platform after setting the env vars. Sentry's "first event received" indicator turns green once any error or test event lands.
+
+### What gets captured
+
+- **FastAPI**: unhandled exceptions in any route, grouped by route + user. 10% of requests traced for performance. PII auto-scrubbed.
+- **Next.js client**: any uncaught error + anything `RootError` (`apps/web/app/error.tsx`) sees. Common ResizeObserver / network noise filtered.
+- **Next.js server components**: errors during RSC render via `onRequestError`.
+
+### Uptime
+
+Free [UptimeRobot](https://uptimerobot.com) monitor on `https://api.zolalongform.com/healthz` at 15-min intervals. The keep-Render-awake workflow pings every 10 min, so a 15-min check usually catches a real outage before the keep-awake masks it.
+
+### Weekly check-in surfaces
+
+- **Sentry** Issues view (last 7 days). Anything > 0 in unfamiliar errors → dig in.
+- **Render** service → Metrics. CPU/memory creep, p95 response time.
+- **Supabase** → Reports → Database. DB CPU, connections, storage.
+- **Vercel Analytics** — page load time + bounce on `/`.
+
+---
+
+*Last updated: 2026-05-31, after Phase 17 light (Sentry SDKs wired into FastAPI + Next.js, inactive until DSNs are set in hosting envs).*

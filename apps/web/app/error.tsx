@@ -1,5 +1,6 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import Link from 'next/link';
 import { useEffect } from 'react';
 
@@ -11,6 +12,8 @@ export default function RootError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // No-op when NEXT_PUBLIC_SENTRY_DSN is unset.
+    Sentry.captureException(error);
     // eslint-disable-next-line no-console
     console.error('Route error:', error);
   }, [error]);

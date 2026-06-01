@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = Field(..., alias="SUPABASE_JWT_SECRET")
     database_url: str = Field(..., alias="DATABASE_URL")
     admin_bootstrap_emails: str = Field(default="", alias="ADMIN_BOOTSTRAP_EMAILS")
+    # Optional: when set, main.py initializes Sentry. Unset = silent no-op.
+    sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
+    sentry_environment: str = Field(default="production", alias="SENTRY_ENVIRONMENT")
 
     @property
     def admin_emails(self) -> list[str]:

@@ -38,6 +38,15 @@ services:
         sync: false   # legacy HS256 secret; can be empty if project uses modern JWKS only
       - key: DATABASE_URL
         sync: false   # the asyncpg connection string from your local .env
+      # ---- Monitoring (Phase 17 light) ----
+      # Sentry DSN; leave blank locally. Once a Sentry project exists, fill
+      # this in via the Render dashboard and redeploy. main.py is a no-op
+      # when this is unset, so we can ship the integration before Sentry
+      # is configured.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
       # NOTE: We do NOT need RESEND_API_KEY on Render. The /admin/invites
       # endpoint calls Supabase Auth's /auth/v1/invite, and Supabase itself
       # sends the email via the provider configured in the Supabase dashboard.
