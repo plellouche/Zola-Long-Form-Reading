@@ -97,6 +97,58 @@ async def _social_save_counts(
     return {aid: int(c) for aid, c in rows.all()}
 
 
+async def _article_rating_scores(
+    session: AsyncSession, article_ids: list[UUID]
+) -> dict[UUID, float]:
+    """Per-article aggregate rating score, normalized to 0-1.
+
+    LOVED=2, LIKED=1, OK=0 — averaged across all raters. Articles with no
+    ratings are absent from the result (caller treats absence as 0.5,
+    neutral). Used by the discover deck to bias toward articles other
+    readers actually loved, not just popular-by-save-count.
+    """
+    if not article_ids:
+        return {}
+    score_expr = func.sum(
+        func.coalesce(
+            func.nullif(
+                # CASE WHEN rating='LOVED' THEN 2 WHEN rating='LIKED' THEN 1 ELSE 0 END
+                # SQLAlchemy: use case() construct
+                None,
+                None,
+            ),
+            0,
+        )
+    )
+    from sqlalchemy import case
+    rating_points = case(
+        (UserArticleState.rating == "LOVED", 2.0),
+        (UserArticleState.rating == "LIKED", 1.0),
+        (UserArticleState.rating == "OK", 0.0),
+        else_=0.0,
+    )
+    rows = await session.execute(
+        select(
+            UserArticleState.article_id,
+            func.avg(rating_points).label("avg"),
+            func.count(UserArticleState.id).label("n"),
+        )
+        .where(UserArticleState.article_id.in_(article_ids))
+        .where(UserArticleState.rating.is_not(None))
+        .group_by(UserArticleState.article_id)
+    )
+    out: dict[UUID, float] = {}
+    for aid, avg, n in rows.all():
+        # Normalize 0-2 -> 0-1. Soft floor at low rater counts so a single
+        # OK doesn't tank an article; weight = n / (n + 3) (Bayesian-ish).
+        n = int(n or 0)
+        avg_norm = (float(avg or 0)) / 2.0
+        confidence = n / (n + 3.0)
+        # Blend toward neutral (0.5) for low-confidence cases.
+        out[aid] = 0.5 + confidence * (avg_norm - 0.5)
+    return out
+
+
 async def for_you_feed(
     session: AsyncSession, user_id: UUID, *, limit: int = 24
 ) -> list[Article]:
@@ -187,9 +239,11 @@ async def for_discover_deck(
     if not candidates:
         return []
 
+    article_ids = [a.id for a in candidates]
     profile = await build_user_topic_profile(session, user_id)
-    topics_map = await _bulk_article_topics(session, [a.id for a in candidates])
-    social = await _social_save_counts(session, user_id, [a.id for a in candidates])
+    topics_map = await _bulk_article_topics(session, article_ids)
+    social = await _social_save_counts(session, user_id, article_ids)
+    rating_scores = await _article_rating_scores(session, article_ids)
     followed_sources = await _followed_source_ids(session, user_id)
     fatigued_sources = await _fatigued_source_ids(session, user_id)
 
@@ -201,12 +255,15 @@ async def for_discover_deck(
         # rebalanced weights inline.
         sim = cosine_similarity(profile, topics_map.get(a.id, {}))
         social_norm = min(social.get(a.id, 0) * 0.25, 1.0)
+        # Absent articles are neutral (0.5) so unrated content isn't penalized.
+        rating_norm = rating_scores.get(a.id, 0.5)
         fresh = freshness_score(a.publication_date or a.created_at, now)
         s = (
-            sim * 0.5
-            + social_norm * 0.15
-            + float(a.quality_score) * 0.2
-            + fresh * 0.1
+            sim * 0.40
+            + rating_norm * 0.15
+            + social_norm * 0.10
+            + float(a.quality_score) * 0.15
+            + fresh * 0.10
             + float(a.source.trust_score) * 0.05
         )
         if a.source_id in followed_sources:
