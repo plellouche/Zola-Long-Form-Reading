@@ -12,6 +12,15 @@ dependencies = [
   "python-dotenv>=1.0.1",
 ]
 
+[project.optional-dependencies]
+# Heavy ML deps; only needed for the embedding backfill job (GitHub Actions).
+# Render API doesn't need them — embeddings get computed in the GHA cron.
+# Install with: pip install '.[embeddings]'
+embeddings = [
+  "sentence-transformers>=3.3.0",
+  "torch>=2.4.0",  # CPU-only is fine; sentence-transformers pulls a torch variant
+]
+
 [project.scripts]
 longform-ingest = "longform_ingest.cli:main"
 
