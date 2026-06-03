@@ -36,8 +36,11 @@ if _settings.sentry_dsn:
         # Sample 10% of requests for transactions; 100% of errors.
         # Cheap to bump if free-tier quota allows.
         traces_sample_rate=0.1,
-        # Don't send PII (Sentry auto-scrubs emails/IPs when False).
-        send_default_pii=False,
+        # Send request headers + IPs + auth-derived user IDs along with
+        # errors. Sentry's new data-scrubbing pipeline handles redaction
+        # better than our manual opt-out did, and user-attached errors are
+        # the headline win of the SDK.
+        send_default_pii=True,
         integrations=[
             StarletteIntegration(),
             FastApiIntegration(),
