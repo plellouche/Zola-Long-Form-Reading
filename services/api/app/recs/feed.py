@@ -28,8 +28,12 @@ from ..models import (
     UserArticleState,
 )
 from .diversity import ScoredCandidate, apply_diversity
-from .profile import build_user_topic_profile
-from .scorer import cosine_similarity, freshness_score, score_article
+from .profile import (
+    _parse_pgvector,
+    build_user_embedding_profile,
+    build_user_topic_profile,
+)
+from .scorer import cosine_similarity, dense_cosine, freshness_score, score_article
 
 CANDIDATE_POOL_DAYS = 90
 DISCOVER_POOL_DAYS = 180  # deck digs a bit deeper than the For-You feed
@@ -95,6 +99,26 @@ async def _social_save_counts(
         .group_by(Event.article_id)
     )
     return {aid: int(c) for aid, c in rows.all()}
+
+
+async def _bulk_article_embeddings(
+    session: AsyncSession, article_ids: list[UUID]
+) -> dict[UUID, list[float]]:
+    """Fetch per-article embeddings. Returns dict; absent IDs = no embedding
+    yet (backfill hasn't processed them). Callers must handle missing entries."""
+    if not article_ids:
+        return {}
+    rows = await session.execute(
+        select(Article.id, Article.embedding)
+        .where(Article.id.in_(article_ids))
+        .where(Article.embedding.is_not(None))
+    )
+    out: dict[UUID, list[float]] = {}
+    for aid, vec in rows.all():
+        parsed = _parse_pgvector(vec)
+        if parsed is not None:
+            out[aid] = parsed
+    return out
 
 
 async def _article_rating_scores(
@@ -175,18 +199,30 @@ async def for_you_feed(
     if not candidates:
         return []
 
-    profile = await build_user_topic_profile(session, user_id)
-    topics_map = await _bulk_article_topics(session, [a.id for a in candidates])
-    social = await _social_save_counts(session, user_id, [a.id for a in candidates])
+    article_ids = [a.id for a in candidates]
+    topic_profile = await build_user_topic_profile(session, user_id)
+    embedding_profile = await build_user_embedding_profile(session, user_id)
+    topics_map = await _bulk_article_topics(session, article_ids)
+    embedding_map = await _bulk_article_embeddings(session, article_ids)
+    social = await _social_save_counts(session, user_id, article_ids)
     followed_sources = await _followed_source_ids(session, user_id)
     fatigued_sources = await _fatigued_source_ids(session, user_id)
 
     now = datetime.now(timezone.utc)
     scored: list[ScoredCandidate[Article]] = []
     for a in candidates:
+        # Blend embedding cosine with topic-dict cosine. Falls back to
+        # topic-only when either side lacks an embedding.
+        topic_sim = cosine_similarity(topic_profile, topics_map.get(a.id, {}))
+        emb_sim = dense_cosine(embedding_profile, embedding_map.get(a.id))
+        blended_sim = (
+            emb_sim * 0.7 + topic_sim * 0.3
+            if embedding_profile is not None and a.id in embedding_map
+            else topic_sim
+        )
         s = score_article(
             article_topics=topics_map.get(a.id, {}),
-            user_profile=profile,
+            user_profile=topic_profile,
             quality=float(a.quality_score),
             source_trust=float(a.source.trust_score),
             social_count=social.get(a.id, 0),
@@ -194,6 +230,7 @@ async def for_you_feed(
             now=now,
             source_followed=a.source_id in followed_sources,
             source_fatigued=a.source_id in fatigued_sources,
+            similarity=blended_sim,
         )
         scored.append(
             ScoredCandidate(
@@ -240,8 +277,10 @@ async def for_discover_deck(
         return []
 
     article_ids = [a.id for a in candidates]
-    profile = await build_user_topic_profile(session, user_id)
+    topic_profile = await build_user_topic_profile(session, user_id)
+    embedding_profile = await build_user_embedding_profile(session, user_id)
     topics_map = await _bulk_article_topics(session, article_ids)
+    embedding_map = await _bulk_article_embeddings(session, article_ids)
     social = await _social_save_counts(session, user_id, article_ids)
     rating_scores = await _article_rating_scores(session, article_ids)
     followed_sources = await _followed_source_ids(session, user_id)
@@ -250,10 +289,18 @@ async def for_discover_deck(
     now = datetime.now(timezone.utc)
     scored: list[ScoredCandidate[Article]] = []
     for a in candidates:
-        # Deck-specific scoring: lean harder on topic-sim so swipes feel
-        # responsive. Reuses the same score_article skeleton but with
-        # rebalanced weights inline.
-        sim = cosine_similarity(profile, topics_map.get(a.id, {}))
+        # Two similarity signals — embedding (the workhorse, once populated)
+        # and the topic-dict cosine (still useful, plus the only signal
+        # available during the embedding backfill window). We blend rather
+        # than swap so the system degrades gracefully as embeddings populate.
+        topic_sim = cosine_similarity(topic_profile, topics_map.get(a.id, {}))
+        emb_sim = dense_cosine(embedding_profile, embedding_map.get(a.id))
+        # When embeddings are present on both sides, lean into them (0.35).
+        # When either side has no embedding, fall back to topic_sim only.
+        if embedding_profile is not None and a.id in embedding_map:
+            sim = emb_sim * 0.7 + topic_sim * 0.3
+        else:
+            sim = topic_sim
         social_norm = min(social.get(a.id, 0) * 0.25, 1.0)
         # Absent articles are neutral (0.5) so unrated content isn't penalized.
         rating_norm = rating_scores.get(a.id, 0.5)
@@ -335,12 +382,25 @@ async def related_articles(
     if not candidates:
         return []
 
-    topics_map = await _bulk_article_topics(session, [a.id for a in candidates])
+    article_ids = [a.id for a in candidates]
+    topics_map = await _bulk_article_topics(session, article_ids)
+    # Embed the seed (if it has one) + every candidate, so we can rank by
+    # full-content similarity, not just topic overlap.
+    seed_embedding_map = await _bulk_article_embeddings(session, [seed_article_id])
+    seed_embedding = seed_embedding_map.get(seed_article_id)
+    embedding_map = await _bulk_article_embeddings(session, article_ids)
 
     now = datetime.now(timezone.utc)
     scored: list[ScoredCandidate[Article]] = []
     for a in candidates:
-        sim = cosine_similarity(seed_topics, topics_map.get(a.id, {}))
+        topic_sim = cosine_similarity(seed_topics, topics_map.get(a.id, {}))
+        emb_sim = dense_cosine(seed_embedding, embedding_map.get(a.id))
+        # Blend when both sides embedded; topic-only otherwise.
+        sim = (
+            emb_sim * 0.7 + topic_sim * 0.3
+            if seed_embedding is not None and a.id in embedding_map
+            else topic_sim
+        )
         if sim <= 0:
             continue
         fresh = freshness_score(a.publication_date or a.created_at, now)

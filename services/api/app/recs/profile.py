@@ -18,7 +18,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import ArticleTopic, UserArticleState, UserTopic
+from ..models import Article, ArticleTopic, UserArticleState, UserTopic
 
 STATUS_WEIGHTS = {
     "SAVED": 1.0,
@@ -85,3 +85,87 @@ async def build_user_topic_profile(session: AsyncSession, user_id: UUID) -> dict
         return {}
     max_val = max(profile.values())
     return {k: v / max_val for k, v in profile.items()}
+
+
+async def build_user_embedding_profile(
+    session: AsyncSession, user_id: UUID
+) -> list[float] | None:
+    """User profile as a normalized centroid over the user's positively-
+    signaled article embeddings.
+
+    Returns None when the user has no signal yet OR none of their articles
+    have embeddings yet (cold start). Callers fall back to topic-dict
+    profile in that case.
+
+    Status weights match the topic profile so the two systems stay
+    consistent. Recency boost applies the same way.
+    """
+    states_rows = await session.execute(
+        select(
+            UserArticleState.article_id,
+            UserArticleState.status,
+            UserArticleState.updated_at,
+        ).where(UserArticleState.user_id == user_id)
+    )
+    states = states_rows.all()
+    if not states:
+        return None
+
+    now = datetime.now(timezone.utc)
+    # Fetch article embeddings — pgvector returns string '[v1,v2,...]' over asyncpg.
+    article_ids = [aid for aid, _, _ in states]
+    emb_rows = await session.execute(
+        select(Article.id, Article.embedding)
+        .where(Article.id.in_(article_ids))
+        .where(Article.embedding.is_not(None))
+    )
+    embeddings = {aid: _parse_pgvector(vec) for aid, vec in emb_rows.all()}
+    if not embeddings:
+        return None  # cold start: no embedded articles yet
+
+    # Weighted sum, then normalize. DISMISSED produces a negative weight
+    # which pulls the centroid away from that vector.
+    dim = len(next(iter(embeddings.values())))
+    centroid = [0.0] * dim
+    total_weight = 0.0
+    for aid, status, updated_at in states:
+        vec = embeddings.get(aid)
+        if vec is None:
+            continue
+        mult = STATUS_WEIGHTS.get(status, 0.0)
+        if mult == 0.0:
+            continue
+        if updated_at is not None:
+            ts = updated_at
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if now - ts <= RECENT_WINDOW:
+                mult *= RECENT_MULTIPLIER
+        for i, v in enumerate(vec):
+            centroid[i] += v * mult
+        total_weight += abs(mult)
+
+    if total_weight == 0.0:
+        return None
+
+    # L2-normalize so cosine_similarity is a pure dot product.
+    norm = (sum(c * c for c in centroid)) ** 0.5
+    if norm == 0:
+        return None
+    return [c / norm for c in centroid]
+
+
+def _parse_pgvector(value) -> list[float] | None:
+    """asyncpg returns pgvector values as the literal string '[v1,v2,...]'
+    unless a custom codec is registered. Parse to list[float] here.
+    None-safe."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [float(x) for x in value]
+    s = str(value).strip()
+    if s.startswith("[") and s.endswith("]"):
+        s = s[1:-1]
+    if not s:
+        return None
+    return [float(x) for x in s.split(",")]

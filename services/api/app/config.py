@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Optional: when set, main.py initializes Sentry. Unset = silent no-op.
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     sentry_environment: str = Field(default="production", alias="SENTRY_ENVIRONMENT")
+    # Phase 18: enable semantic search. Requires sentence-transformers
+    # installed in the runtime (~250MB RAM after model load). Render free
+    # tier (512MB) is tight — upgrade to Starter before enabling.
+    semantic_search_enabled: bool = Field(default=False, alias="SEMANTIC_SEARCH_ENABLED")
 
     @property
     def admin_emails(self) -> list[str]:

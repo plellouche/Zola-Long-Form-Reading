@@ -33,6 +33,18 @@ def cosine_similarity(a: dict[UUID, float], b: dict[UUID, float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def dense_cosine(a: list[float] | None, b: list[float] | None) -> float:
+    """Dense-vector cosine for sentence-transformer embeddings.
+
+    Inputs are expected to be L2-normalized (build_user_embedding_profile +
+    sentence_transformers default produce normalized vectors), so this is
+    effectively a dot product. Falls back to 0 on missing data.
+    """
+    if a is None or b is None or len(a) != len(b):
+        return 0.0
+    return sum(x * y for x, y in zip(a, b, strict=True))
+
+
 def freshness_score(reference_date, now: datetime | None = None) -> float:
     """Exponential decay: ~1.0 today, ~0.5 at ~21 days, ~0.1 at ~70 days."""
     if reference_date is None:
@@ -58,8 +70,17 @@ def score_article(
     now: datetime | None = None,
     source_followed: bool = False,
     source_fatigued: bool = False,
+    similarity: float | None = None,
 ) -> float:
-    topic_sim = cosine_similarity(user_profile, article_topics)
+    """When `similarity` is provided (e.g. an embedding cosine pre-computed
+    upstream) it overrides the topic-cosine signal. Callers in Phase 18+
+    pass the blended embedding+topic value so this function stays the
+    single source of truth for weight tuning."""
+    topic_sim = (
+        similarity
+        if similarity is not None
+        else cosine_similarity(user_profile, article_topics)
+    )
     social_norm = min(social_count * 0.25, 1.0)  # 4+ followee saves saturates
     fresh = freshness_score(reference_date, now)
     base = (
