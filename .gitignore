@@ -57,3 +57,14 @@ Thumbs.db
 # --- Coverage / logs ---
 coverage/
 *.log
+
+# --- Finder/iCloud conflict copies ---
+# macOS sometimes creates "<name> 2.ext" duplicates of files that get
+# touched from multiple processes (Finder + editor) or in iCloud sync.
+# They aren't valid Next route segments (spaces in names) and silently
+# bloat the deploy. See HEAD~ for the day this caught us.
+* 2.tsx
+* 2.ts
+* 2.woff2
+* 2.svg
+* 2.css
