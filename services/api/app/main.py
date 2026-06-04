@@ -100,3 +100,6 @@ def root() -> dict[str, str]:
     # Touch settings so a misconfigured env fails fast at first request.
     get_settings()
     return {"service": "zola-api", "version": "0.0.0"}
+
+# Touch — force Render to re-pick HEAD (commits since 801b885 only changed
+# apps/web, so the auto-deploy path filter may have skipped them).
