@@ -1,4 +1,4 @@
-"""Admin product-analytics dashboard.
+"""Admin product-analytics dashboard + user directory.
 
 Aggregates DAU/WAU/MAU, signup growth, finish/save activity, and top
 content from the existing schema (no new event types required). Admin-
@@ -15,16 +15,16 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_admin import require_admin
 from ..database import get_session
 from ..models import Article, Event, Profile, Source, UserArticleState
 
-router = APIRouter(prefix="/api/admin/dashboard", tags=["admin"])
+router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 class DailyPoint(BaseModel):
@@ -57,7 +57,7 @@ class DashboardResponse(BaseModel):
     top_sources_finished: list[TopSourceRow]
 
 
-@router.get("", response_model=DashboardResponse)
+@router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     _admin = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
@@ -213,3 +213,118 @@ async def get_dashboard(
         top_sources_saved=top_sources_saved,
         top_sources_finished=top_sources_finished,
     )
+
+
+# =============================================================================
+# User directory
+# =============================================================================
+
+
+class UserRow(BaseModel):
+    id: str
+    username: str | None
+    display_name: str | None
+    email: str | None  # null for service-role / system accounts
+    role: str
+    created_at: str  # ISO
+    onboarded_at: str | None
+    last_active_at: str | None  # max(auth.last_sign_in_at, last event ts)
+    finished_count: int
+    saved_count: int
+
+
+class UsersResponse(BaseModel):
+    items: list[UserRow]
+    total: int
+
+
+@router.get("/users", response_model=UsersResponse)
+async def list_users(
+    q: str | None = Query(default=None, description="Search username / display_name / email"),
+    days: int | None = Query(
+        default=None,
+        ge=1,
+        le=365,
+        description="Restrict to users who signed up within N days",
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
+    _admin = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> UsersResponse:
+    """Searchable user directory. Joins profiles to auth.users for email.
+
+    Raw SQL because auth.users isn't in our SQLAlchemy models — service role
+    DB connection has read access to the auth schema on Supabase.
+    """
+    where_clauses = ["1=1"]
+    params: dict[str, object] = {}
+
+    if days is not None:
+        where_clauses.append("p.created_at >= now() - make_interval(days => :days)")
+        params["days"] = days
+
+    if q and q.strip():
+        where_clauses.append(
+            "(lower(coalesce(p.username, '')) like :q "
+            "OR lower(coalesce(p.display_name, '')) like :q "
+            "OR lower(coalesce(u.email, '')) like :q)"
+        )
+        params["q"] = f"%{q.strip().lower()}%"
+
+    where_sql = " AND ".join(where_clauses)
+
+    sql = text(f"""
+        with last_event as (
+            select user_id, max(created_at) as last_at
+            from public.events
+            where user_id is not null
+            group by user_id
+        ),
+        counts as (
+            select user_id,
+                   count(*) filter (where status = 'FINISHED') as finished_count,
+                   count(*) filter (where status = 'SAVED')    as saved_count
+            from public.user_article_states
+            group by user_id
+        )
+        select
+            p.id::text as id,
+            p.username,
+            p.display_name,
+            u.email,
+            p.role,
+            p.created_at,
+            p.onboarded_at,
+            greatest(u.last_sign_in_at, le.last_at) as last_active_at,
+            coalesce(c.finished_count, 0) as finished_count,
+            coalesce(c.saved_count, 0) as saved_count,
+            count(*) over () as total_count
+        from public.profiles p
+        left join auth.users u on u.id = p.id
+        left join last_event le on le.user_id = p.id
+        left join counts c on c.user_id = p.id
+        where {where_sql}
+        order by p.created_at desc
+        limit :limit
+    """).bindparams(limit=limit, **params)
+
+    rows = (await session.execute(sql)).mappings().all()
+
+    items = [
+        UserRow(
+            id=r["id"],
+            username=r["username"],
+            display_name=r["display_name"],
+            email=r["email"],
+            role=r["role"] or "user",
+            created_at=r["created_at"].isoformat(),
+            onboarded_at=r["onboarded_at"].isoformat() if r["onboarded_at"] else None,
+            last_active_at=r["last_active_at"].isoformat() if r["last_active_at"] else None,
+            finished_count=int(r["finished_count"] or 0),
+            saved_count=int(r["saved_count"] or 0),
+        )
+        for r in rows
+    ]
+    total = int(rows[0]["total_count"]) if rows else 0
+
+    return UsersResponse(items=items, total=total)

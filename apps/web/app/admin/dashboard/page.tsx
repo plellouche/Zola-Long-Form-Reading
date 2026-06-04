@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
+import { PlotlyLineChart } from '@/components/admin/plotly-line-chart';
 import { getUser } from '@/lib/auth';
 import { getServerApiClient } from '@/lib/server-api';
 import { ApiError } from '@longform/api-client';
@@ -70,12 +71,20 @@ export default async function AdminDashboardPage() {
             Product metrics from the events table. Last 30 days. Refresh page for live data.
           </p>
         </div>
-        <Link
-          href="/settings/sources"
-          className="text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-        >
-          Sources →
-        </Link>
+        <div className="flex gap-3 text-sm">
+          <Link
+            href="/admin/users"
+            className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+          >
+            Users →
+          </Link>
+          <Link
+            href="/settings/sources"
+            className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+          >
+            Sources →
+          </Link>
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -103,20 +112,20 @@ export default async function AdminDashboardPage() {
       </section>
 
       <section className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <ChartCard
+        <PlotlyLineChart
           label="Signups · last 30d"
-          series={data.growth.signups_by_day}
-          color="hsl(var(--accent))"
+          series={densifyLast30(data.growth.signups_by_day)}
+          color="hsl(154, 39%, 41%)"
         />
-        <ChartCard
+        <PlotlyLineChart
           label="DAU · last 30d"
-          series={data.growth.dau_by_day}
-          color="hsl(var(--primary))"
+          series={densifyLast30(data.growth.dau_by_day)}
+          color="hsl(204, 56%, 31%)"
         />
-        <ChartCard
+        <PlotlyLineChart
           label="Finishes · last 30d"
-          series={data.growth.finishes_by_day}
-          color="hsl(var(--foreground))"
+          series={densifyLast30(data.growth.finishes_by_day)}
+          color="hsl(20, 14%, 30%)"
         />
       </section>
 
@@ -178,58 +187,6 @@ function Tile({
       {hint && (
         <div className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{hint}</div>
       )}
-    </div>
-  );
-}
-
-function ChartCard({
-  label,
-  series,
-  color,
-}: {
-  label: string;
-  series: DailyPoint[];
-  color: string;
-}) {
-  // Fill missing days with zero so the sparkline is continuous.
-  const filled = densifyLast30(series);
-  const max = Math.max(1, ...filled.map((p) => p.count));
-  const total = filled.reduce((acc, p) => acc + p.count, 0);
-
-  const width = 280;
-  const height = 80;
-  const stepX = width / (filled.length - 1 || 1);
-
-  const points = filled
-    .map((p, i) => {
-      const x = i * stepX;
-      const y = height - (p.count / max) * (height - 4) - 2;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-
-  return (
-    <div className="rounded-lg border border-[hsl(var(--border))] p-4">
-      <div className="flex items-baseline justify-between">
-        <div className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
-          {label}
-        </div>
-        <div className="font-serif text-2xl font-medium leading-none">{total}</div>
-      </div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="mt-3 h-20 w-full"
-        preserveAspectRatio="none"
-      >
-        <polyline
-          fill="none"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          points={points}
-        />
-      </svg>
     </div>
   );
 }
