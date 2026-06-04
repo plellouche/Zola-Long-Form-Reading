@@ -12,7 +12,7 @@ from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import CurrentUser, get_current_user
@@ -34,8 +34,15 @@ async def hours_leaderboard(
     """Rank viewer + everyone they follow by hours read in `period`."""
 
     # Build participant set: self + everyone the viewer follows.
-    followee_q = select(Follow.followee_id).where(Follow.follower_id == current.id)
-    participant_ids_subq = followee_q.union(select(current.id).label("u")).subquery()
+    # Compute in Python — much simpler than fighting SQLAlchemy to UNION a
+    # literal UUID into a column-typed subquery (the union-of-literals path
+    # threw "Column expression... expected, got UUID" in production).
+    followee_rows = await session.execute(
+        select(Follow.followee_id).where(Follow.follower_id == current.id)
+    )
+    ids = list({row[0] for row in followee_rows.all()} | {current.id})
+    if not ids:
+        return []
 
     # Time window for FINISHED events.
     time_window_clause = None
@@ -46,7 +53,7 @@ async def hours_leaderboard(
     # 'all_time' has no time filter.
 
     where_clauses = [
-        UserArticleState.user_id.in_(select(participant_ids_subq)),
+        UserArticleState.user_id.in_(ids),
         UserArticleState.status == "FINISHED",
     ]
     if time_window_clause is not None:
@@ -69,15 +76,6 @@ async def hours_leaderboard(
         r.user_id: (int(r.total_minutes or 0), int(r.finished_count or 0))
         for r in stats_rows
     }
-
-    # Load profiles for everyone in the participant set, even zero-readers,
-    # so the leaderboard tells the truth about who's lapping who.
-    participant_ids = await session.execute(
-        select(participant_ids_subq)
-    )
-    ids = [row[0] for row in participant_ids.all()]
-    if not ids:
-        return []
 
     profiles_q = (
         select(Profile)
