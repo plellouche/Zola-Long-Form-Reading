@@ -9,6 +9,7 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from .config import get_settings
 from .routers import (
+    admin_dashboard,
     admin_invites,
     articles,
     discover,
@@ -84,6 +85,7 @@ app.include_router(recs.router)
 app.include_router(discover.router)
 app.include_router(leaderboard.router)
 app.include_router(admin_invites.router)
+app.include_router(admin_dashboard.router)
 
 
 @app.get("/healthz")

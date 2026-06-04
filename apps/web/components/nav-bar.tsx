@@ -82,7 +82,7 @@ export async function NavBar() {
           {user && isOnboarded && profile?.username && (
             <>
               {isAdmin && (
-                <Link href="/settings/sources" className={`hidden sm:inline-flex ${subtleLinkCls}`}>
+                <Link href="/admin/dashboard" className={`hidden sm:inline-flex ${subtleLinkCls}`}>
                   Admin
                 </Link>
               )}

@@ -1,4 +1,5 @@
 from . import (
+    admin_dashboard,
     articles,
     events,
     ingest,
@@ -14,6 +15,7 @@ from . import (
 )
 
 __all__ = [
+    "admin_dashboard",
     "articles",
     "events",
     "ingest",

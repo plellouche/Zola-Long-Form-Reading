@@ -233,6 +233,48 @@ Documented in `COMMAND_CENTER.md §15` already. Brief recap with monitoring focu
 
 ---
 
+## Phase 17.5 — PostHog (future expansion)
+
+**Goal**: Real product analytics — funnels, retention curves, A/B tests, session replay — once the in-house `/admin/dashboard` runs out of road.
+
+**Why now (deferred)**: Today's `/admin/dashboard` covers signups, DAU/WAU/MAU, finishes, save→finish conversion, top articles + sources from our own `events` table. That's enough for a beta. PostHog earns its keep when you start asking questions the in-house dashboard can't answer cheaply.
+
+### Trigger to add PostHog
+Any one of these:
+- ≥50 daily active users and you want to A/B test a UI change
+- Need a real funnel view (signup → onboarding → first save → first finish drop-off)
+- Want session replay to debug "why do users bounce on /discover after one card?"
+- Need cohort analysis ("week-1 retention for users who saved ≥3 articles in their first session")
+
+### Why PostHog specifically
+- Generous free tier: 1M events/month, 5k session replays/month (we'd use <10k/month at beta scale)
+- Self-hostable if the privacy story matters more later
+- Built-in dashboards + funnels + cohorts (no SQL needed for common questions)
+- Feature flags + A/B testing built in (no separate vendor)
+- Plays well with Next.js — `posthog-js` autocapture covers most events with zero tagging
+
+### Privacy tradeoff
+Adds a third-party tracker that sees every page navigation. Long-form readers tend to dislike trackers. Three mitigations:
+- Self-host PostHog (free, ~$10/mo on a small VPS)
+- Use PostHog EU cloud + opt-in cookie banner
+- Defer until churn signal forces the question
+
+### Implementation sketch (when triggered)
+- `pnpm add posthog-js posthog-node` in `apps/web`
+- Wrap `app/layout.tsx` in a `<PostHogProvider>` client component
+- `posthog.identify(user.id)` after login
+- Tag manually-tracked events alongside our existing `events` writes:
+  ```ts
+  posthog.capture('article_finished', { article_id, source_slug });
+  ```
+- Server-side capture from FastAPI for ingest pipeline runs (cron health metric)
+- Set `NEXT_PUBLIC_POSTHOG_KEY` in Vercel
+- Build first funnel: `Sign up → Onboard → First Save → First Finish`
+
+**Estimate**: ~half day to install + tag the top 10 events. Funnels and dashboards configurable in PostHog UI, no code.
+
+---
+
 ## Phase 18 — Search & Recommender Improvements
 
 **Goal**: Move beyond keyword tagging + sparse-dict cosine to a recommender that actually understands what an article is about, and a search that handles synonyms and conceptual queries — not just exact text matches.
