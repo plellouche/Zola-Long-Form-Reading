@@ -20,6 +20,7 @@ class ProfileMe(BaseModel):
     avatar_url: str | None
     bio: str | None
     role: str  # 'user' | 'admin'
+    discoverable: bool = False
     onboarded_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -49,6 +50,9 @@ class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     bio: str | None = Field(default=None, max_length=500)
     avatar_url: str | None = Field(default=None, max_length=500)
+    # Opt-in to the public /users directory. Null = no change (caller can
+    # PATCH bio without flipping this flag).
+    discoverable: bool | None = None
 
 
 class OnboardingRequest(BaseModel):

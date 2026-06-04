@@ -14,7 +14,7 @@ const CARDS = [
   {
     icon: Share2,
     title: 'Share',
-    body: 'Organize what you love into lists. Follow people whose taste you trust. See what they save, before it goes viral.',
+    body: 'Organize what you love into lists. Follow people whose taste you trust, and connect over meaningful ideas.',
   },
 ] as const;
 

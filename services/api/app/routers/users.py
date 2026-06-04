@@ -122,6 +122,78 @@ async def complete_onboarding(
     return profile
 
 
+@router.get("", response_model=list[PublicProfile])
+async def list_discoverable_users(
+    viewer: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    limit: int = 100,
+    sort: str = "active",
+):
+    """Public directory of opt-in users. Signed-in viewers only.
+
+    `sort=active`  — by most-recent event timestamp DESC (default)
+    `sort=newest`  — by signup date DESC
+    `sort=name`    — alphabetical by display_name / username
+    """
+    from sqlalchemy import case, desc as sa_desc
+    from ..models import Event
+    limit = max(1, min(limit, 200))
+
+    last_active_sq = (
+        select(
+            Event.user_id.label("uid"),
+            func.max(Event.created_at).label("last_at"),
+        )
+        .group_by(Event.user_id)
+        .subquery()
+    )
+    follower_count_sq = (
+        select(
+            Follow.followee_id.label("uid"),
+            func.count(Follow.id).label("c"),
+        )
+        .group_by(Follow.followee_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Profile, last_active_sq.c.last_at, func.coalesce(follower_count_sq.c.c, 0).label("followers"))
+        .outerjoin(last_active_sq, last_active_sq.c.uid == Profile.id)
+        .outerjoin(follower_count_sq, follower_count_sq.c.uid == Profile.id)
+        .where(Profile.discoverable.is_(True), Profile.onboarded_at.is_not(None))
+        .limit(limit)
+    )
+    if sort == "newest":
+        stmt = stmt.order_by(Profile.created_at.desc())
+    elif sort == "name":
+        stmt = stmt.order_by(func.lower(func.coalesce(Profile.display_name, Profile.username)))
+    else:  # active
+        stmt = stmt.order_by(sa_desc(func.coalesce(last_active_sq.c.last_at, Profile.created_at)))
+
+    rows = (await session.execute(stmt)).all()
+
+    # Who does the viewer already follow? One query, dedupe.
+    profile_ids = [p.id for p, _, _ in rows]
+    am_following: set = set()
+    if profile_ids:
+        follow_rows = await session.execute(
+            select(Follow.followee_id).where(
+                Follow.follower_id == viewer.id,
+                Follow.followee_id.in_(profile_ids),
+            )
+        )
+        am_following = {fid for (fid,) in follow_rows.all()}
+
+    out: list[PublicProfile] = []
+    for p, _last_at, followers in rows:
+        pub = PublicProfile.model_validate(p)
+        pub.followers_count = int(followers or 0)
+        pub.am_following = p.id in am_following
+        pub.is_self = p.id == viewer.id
+        out.append(pub)
+    return out
+
+
 @router.get("/{username}", response_model=PublicProfile)
 async def get_user_by_username(
     username: str,

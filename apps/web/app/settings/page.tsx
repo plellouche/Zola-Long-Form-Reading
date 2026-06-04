@@ -13,6 +13,7 @@ type ProfileMe = {
   display_name: string | null;
   avatar_url: string | null;
   bio: string | null;
+  discoverable: boolean;
   onboarded_at: string | null;
 };
 
@@ -45,6 +46,7 @@ export default async function SettingsPage() {
       <SettingsForm
         initialDisplayName={profile.display_name ?? ''}
         initialBio={profile.bio ?? ''}
+        initialDiscoverable={profile.discoverable ?? false}
       />
 
       {user.email && (

@@ -86,6 +86,9 @@ export async function NavBar() {
                   Admin
                 </Link>
               )}
+              <Link href="/users" className={`hidden sm:inline-flex ${linkCls}`}>
+                Readers
+              </Link>
               <Link href="/leaderboard" className={`hidden sm:inline-flex ${linkCls}`}>
                 Board
               </Link>

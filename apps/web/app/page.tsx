@@ -49,12 +49,12 @@ export default async function HomePage() {
         <SourceBand />
         <section className="mx-auto max-w-3xl px-6 py-20 text-center">
           <h2 className="font-serif text-3xl font-medium tracking-tight">
-            Built for evenings, not endless feeds.
+            Reduce the noise and connect over meaningful ideas.
           </h2>
           <p className="mx-auto mt-4 max-w-prose font-serif text-lg leading-relaxed text-[hsl(var(--muted-foreground))]">
-            Every article on Zola links out to its original publication —
+            Every article on Zola links out to its original publication,
             we don&rsquo;t host or paraphrase. Curation is the product. If
-            you want a feed that respects your time and the writers behind
+            you want a quality feed of essays and articles that respects your time and the writers behind
             the work, you&rsquo;re in the right place.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">

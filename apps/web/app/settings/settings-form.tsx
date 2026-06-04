@@ -11,13 +11,16 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 export function SettingsForm({
   initialDisplayName,
   initialBio,
+  initialDiscoverable,
 }: {
   initialDisplayName: string;
   initialBio: string;
+  initialDiscoverable: boolean;
 }) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [bio, setBio] = useState(initialBio);
+  const [discoverable, setDiscoverable] = useState(initialDiscoverable);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +35,7 @@ export function SettingsForm({
         body: {
           display_name: displayName.trim() || null,
           bio: bio.trim() || null,
+          discoverable,
         },
       });
       setStatus('saved');
@@ -69,6 +73,24 @@ export function SettingsForm({
           maxLength={500}
           className="mt-1 block w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--foreground))]"
         />
+      </label>
+
+      <label className="flex items-start gap-3 rounded-md border border-[hsl(var(--border))] p-3">
+        <input
+          type="checkbox"
+          checked={discoverable}
+          onChange={(e) => setDiscoverable(e.target.checked)}
+          className="mt-0.5 h-4 w-4"
+        />
+        <span className="text-sm">
+          <span className="font-medium">List me in the user directory</span>
+          <span className="mt-0.5 block text-xs text-[hsl(var(--muted-foreground))]">
+            Off by default. Turn this on to be discoverable on{' '}
+            <code>/users</code> — other signed-in readers can find and follow
+            you. Your <code>/u/{'{username}'}</code> page stays accessible to
+            anyone who knows the URL either way.
+          </span>
+        </span>
       </label>
 
       <div className="flex items-center gap-3">
