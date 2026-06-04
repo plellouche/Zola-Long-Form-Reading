@@ -7,6 +7,7 @@ import { ReadArticleButton } from './read-button';
 import { AddToList } from '@/components/add-to-list';
 import { ArticleCard } from '@/components/article-card';
 import { ArticleStateControls } from '@/components/article-state-controls';
+import { Comments, type CommentRow } from '@/components/comments';
 import { getUser } from '@/lib/auth';
 import { getSavedArticleIds } from '@/lib/me';
 import { getServerApiClient } from '@/lib/server-api';
@@ -103,7 +104,7 @@ export default async function ArticlePage({
     throw err;
   }
 
-  const [allTopics, myStatus, related, savedIds] = await Promise.all([
+  const [allTopics, myStatus, related, savedIds, comments] = await Promise.all([
     api.request<Topic[]>('/api/topics'),
     user ? getMyStateForArticle(id) : Promise.resolve(null),
     api
@@ -113,6 +114,13 @@ export default async function ArticlePage({
         throw err;
       }),
     user ? getSavedArticleIds() : Promise.resolve<string[]>([]),
+    api
+      .request<{ items: CommentRow[]; total: number }>(`/api/articles/${id}/comments`)
+      .then((r) => r.items)
+      .catch((err) => {
+        if (err instanceof ApiError) return [] as CommentRow[];
+        throw err;
+      }),
   ]);
   const savedSet = new Set(savedIds);
   const topicsById = new Map(allTopics.map((t) => [t.id, t]));
@@ -212,6 +220,8 @@ export default async function ArticlePage({
           ))}
         </div>
       )}
+
+      <Comments articleId={article.id} initial={comments} signedIn={!!user} />
 
       {related.length > 0 && (
         <section className="mt-16">

@@ -12,6 +12,7 @@ from .routers import (
     admin_dashboard,
     admin_invites,
     articles,
+    comments,
     discover,
     events,
     ingest,
@@ -84,6 +85,7 @@ app.include_router(social.router)
 app.include_router(recs.router)
 app.include_router(discover.router)
 app.include_router(leaderboard.router)
+app.include_router(comments.router)
 app.include_router(admin_invites.router)
 app.include_router(admin_dashboard.router)
 

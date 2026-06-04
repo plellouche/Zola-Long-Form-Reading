@@ -1,6 +1,7 @@
 from . import (
     admin_dashboard,
     articles,
+    comments,
     events,
     ingest,
     leaderboard,
@@ -17,6 +18,7 @@ from . import (
 __all__ = [
     "admin_dashboard",
     "articles",
+    "comments",
     "events",
     "ingest",
     "leaderboard",

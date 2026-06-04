@@ -1,12 +1,14 @@
 from .content import Article, ArticleTopic, Event, Source
 from .personal import ArticleComparison, ArticleEloRating, ListItem, ReadingList, UserArticleState
 from .profile import Follow, Profile, SourceFollow, Topic, UserTopic
+from .social_models import Comment
 
 __all__ = [
     "Article",
     "ArticleComparison",
     "ArticleEloRating",
     "ArticleTopic",
+    "Comment",
     "Event",
     "Follow",
     "ListItem",
