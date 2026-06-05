@@ -30,6 +30,17 @@ pnpm dev:api
 Health check: `curl http://localhost:8000/healthz`
 
 ## Docs
-- `COMMAND_CENTER.md` — architecture, data model, phased plan, decision log
-- `PROGRESS.md` — live build state (update as you go)
+- `ROADMAP.md` — phases (status + scope) + pending small follow-ups
+- `PROGRESS.md` — backward-looking ledger of what shipped in each phase
+- `COMMAND_CENTER.md` — architecture, data model, decision log, anti-features
+- `DEPLOYMENT.md` — production runbook (Vercel + Render + Supabase + Sentry + Resend)
+- `DESIGN.md` — visual identity, typography, color tokens
 - `Longform_Reading_MVP_Scaffolding.md` — original scaffolding notes + seed source list
+
+## Current shape (2026-06-04)
+- **46 active sources, ~3,500 articles**, embedded by GHA cron (sentence-transformers/all-MiniLM-L6-v2).
+- **End-to-end live** on `zolalongform.com` (Next 15 on Vercel) + `api.zolalongform.com` (FastAPI on Render).
+- **Phases 11/12/13 ✅**, Phase 17 light ✅ (Sentry + admin dashboard + opt-in user directory), Phase 18 first slice ✅ (embeddings, semantic search behind a flag).
+- **Off-roadmap shipped**: ratings + Elo + pairwise comparisons, hours leaderboard, flat comments, mixed-source browse default, paywall chips, hand-rendered favicon.
+
+See `ROADMAP.md` for what's next.

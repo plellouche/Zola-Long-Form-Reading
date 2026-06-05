@@ -181,7 +181,9 @@ This phase is **blocked on explicit per-source licensing**. Before any code:
 
 ---
 
-## Phase 17 — Observability, Monitoring, and Scale Prep
+## Phase 17 — Observability, Monitoring, and Scale Prep (light variant ✅, full variant pending)
+
+**Status (2026-06-04)**: Phase 17 *light* is shipped (Sentry on both ends, in-house `/admin/dashboard` with Plotly, opt-in `/users` directory, monitoring runbook in `DEPLOYMENT.md`). Full variant (alerting + UptimeRobot + structured logging + scale-tier triggers) waits for the user-count threshold below.
 
 **Goal**: Know what's happening in production before users tell you. Scale Supabase / Auth / API capacity on actual signal.
 
@@ -275,7 +277,9 @@ Adds a third-party tracker that sees every page navigation. Long-form readers te
 
 ---
 
-## Phase 18 — Search & Recommender Improvements
+## Phase 18 — Search & Recommender Improvements (first slice ✅, polish + saved searches pending)
+
+**Status (2026-06-04)**: First slice shipped — pgvector enabled, `articles.embedding vector(384)` column live, GHA cron embedding 500 articles per tick (~72% backfilled at last check), recs feeds blend `dense_cosine(user_emb, article_emb) * 0.7 + topic_cosine * 0.3` when both sides are embedded (falls back gracefully during cold start), `/api/search?mode=hybrid` interleaves keyword + semantic results (behind `SEMANTIC_SEARCH_ENABLED` flag since the model is RAM-tight on Render free tier). Still on the roadmap: HNSW index when article count crosses 10k, saved-search digests, A/B harness, autocomplete.
 
 **Goal**: Move beyond keyword tagging + sparse-dict cosine to a recommender that actually understands what an article is about, and a search that handles synonyms and conceptual queries — not just exact text matches.
 
@@ -441,21 +445,33 @@ The minimal path to "publicly invitable" is **11 → 12 → 13**. Everything els
 These don't warrant their own phase — they're scoped well under a day each — but they're real, live, and worth doing soon. Listed in rough priority order.
 
 ### Fix the broken-RSS sources
-- **Status**: known broken; currently marked `fetch_strategy = manual` so they don't spam the cron error log. Documented in PROGRESS.md "Fetch strategies & full-archive backfill" § Known follow-up.
-- **The sources**: Boston Review (RSS feed returns empty channel), The Rumpus (RSS URL is HTML, not RSS), 3 Quarks Daily (DNS resolution fails), Reddit /r/longform (RSS works but each entry is a thread; we'd need to extract the linked article URL from the thread body — non-trivial).
-- **Effort**: 30–60 min for each of the first three (find the new feed URL or switch to sitemap). Reddit is its own ~1-day project because the data shape is different.
+- **Status**: known broken; currently marked `fetch_strategy = manual` so they don't spam the cron error log.
+- **The sources**: Boston Review (RSS feed returns empty channel), The Rumpus (RSS URL is HTML, not RSS), 3 Quarks Daily (DNS resolution fails), Reddit /r/longform (RSS works but each entry is a thread; we'd need to extract the linked article URL from the thread body — non-trivial), Sidetracked, Austin Vernon (no public feed).
+- **Effort**: 30–60 min for each of the first few (find the new feed URL or switch to sitemap). Reddit is its own ~1-day project because the data shape is different.
 - **Trigger**: any time. The current `manual` config is non-blocking but means zero ingest from these sources.
 
-### Article-card resilience for sparse-metadata articles
-- **What's wrong**: the 208 Paul Graham essays just ingested have no `publication_date`, no `og_image_url`, often no `description`. Article cards (in `apps/web/components/article-card.tsx` and `featured-article-card.tsx`) render those fields when present and look slightly naked when they're missing — there's a header strip with the source name, then a title, then nothing else.
-- **Fix**: in the card components, when there's no OG image, fall back to a colored gradient block that uses a hash of the title or the source slug (similar to the `<Avatar>` fallback color logic in `components/avatar.tsx`). When there's no publication date, suppress the dot-separator instead of showing a stray "·". When there's no description, render a one-line author + word-count substitute.
-- **Effort**: ~2 hours; entirely in `article-card.tsx`, `featured-article-card.tsx`, and the deck card body in `discover-deck.tsx`.
-- **Trigger**: visible win as soon as you have ≥1 invitee browsing PG essays (which is now); not blocking but visibly polishes the lineup.
+### OG image for `zolalongform.com`
+- **What's missing**: `app/opengraph-image.tsx` was tried twice via `next/og` ImageResponse, both times crashed Satori (woff2 unsupported, Google Fonts returning HTML). Deferred until we generate a static PNG offline.
+- **Effort**: 30 min if we generate the PNG locally (sharp / imagemagick / one-shot Node script) and commit it as `apps/web/app/opengraph-image.png`.
+- **Trigger**: any time the brand share-card is wanted (Twitter / iMessage / Slack unfurl).
+
+### Render free → Starter upgrade
+- **Trigger**: first user complains about the 30s cold start, OR we want to enable semantic-search in production (Render free tier can't fit the sentence-transformers model in 512MB). $7/mo.
+- **Side effect**: the keep-Render-awake GH workflow becomes redundant — delete it.
+
+### Activate semantic search in production
+- **Status**: code is wired and behind `SEMANTIC_SEARCH_ENABLED`. Needs (a) Render Starter or bigger (RAM), (b) `pip install sentence-transformers` in the API runtime (currently only in the GHA cron's `[embeddings]` extra), (c) `SEMANTIC_SEARCH_ENABLED=true` env var.
+- **Trigger**: after the Render upgrade above. Until then, `mode=hybrid|semantic` requests silently fall back to keyword.
+
+### Pairwise Elo → batch Bradley-Terry
+- **What's there**: incremental Elo (K=32) on each pairwise comparison, applied atomically with the vote.
+- **What's missing**: Bradley-Terry recompute over the full comparison history. Incremental Elo is path-dependent — early votes are noisy.
+- **Effort**: half a day. Becomes worth it once a single user has ~50+ comparisons.
 
 ### (Already documented elsewhere)
-- **Archive + sitemap dedup-before-fetch optimization**: known. In PROGRESS.md "Fetch strategies" § Known follow-up. Skips ~6000 page-fetches/day at current scale once implemented.
+- **Archive + sitemap dedup-before-fetch optimization**: skips ~6000 page-fetches/day at current scale once implemented.
+- **HNSW index on `articles.embedding`**: deferred until article count crosses 10k (currently 3,468). One-line migration when ready.
 - **Vercel GitHub auto-deploy reconnect**: in DEPLOYMENT.md Carry-forward TODOs.
-- **Render free → Starter upgrade**: in DEPLOYMENT.md Carry-forward TODOs.
 - **Vercel Preview env vars**: in DEPLOYMENT.md Carry-forward TODOs.
 
 ---
@@ -465,8 +481,8 @@ These don't warrant their own phase — they're scoped well under a day each —
 - **Monetization** (paid tier, ads, affiliate): deliberately deferred until product-market fit signal exists. Free invite-only stays the model through Phase 13.
 - **Federation / ActivityPub**: cool idea, wrong app shape. We point to sources, not host content.
 - **Cross-source dedup**: see COMMAND_CENTER §16 — too rare to be worth fuzzy-matching.
-- **Comments**: same — wrong app shape.
+- ~~**Comments**: same — wrong app shape.~~ **Reconsidered and shipped** (2026-06-04). Flat, signed-in to write, public to read. Auto-linkified URLs, no markdown. See PROGRESS.md § "Gamification: ratings, Elo, leaderboard, comments".
 
 ---
 
-*Last updated: 2026-05-24 after Phase 11 + Phase 12 close-out and fetch-strategy framework + backfill. Pending follow-ups section is the live picklist for under-a-day items.*
+*Last updated: 2026-06-04. Phases 11/12/13 fully shipped; Phase 17 light shipped (Sentry both ends + in-house admin dashboard + opt-in user directory); Phase 18 first slice shipped (pgvector + GHA-cron embedding backfill + recs blend + hybrid search behind a flag). Off-roadmap shipped: ratings + Elo + pairwise comparisons + hours leaderboard + comments + mixed-source browse + paywall chips + hand-rendered favicon + 19→46 sources.*

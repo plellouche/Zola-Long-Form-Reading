@@ -642,6 +642,125 @@ Before this change, every source had to expose a working RSS feed for the cron t
 
 ---
 
+## Phase 13.5 — Polish + content acquisition push
+
+**Status (2026-06-04)**: shipped across many small commits.
+
+### Shipped
+- **Hand-rendered favicon** at `apps/web/app/icon.svg`: user-supplied PNG (BFO "Z" on teal `#22577A`) cropped square + embedded base64 inside an SVG clipPath for rounded corners. Several false-starts learned the hard way (`next/og` `ImageResponse` overengineering, Satori woff2 rejection, browser favicon-DB caching, the `www` cert SAN mismatch).
+- **Card resilience** for sparse-metadata articles: new `<ArticleImageFallback>` renders one of 8 deterministic muted gradients (seeded by article id) with the source's first letter as a watermark. Wired into `article-card`, `featured-article-card`, `discover-deck`. Meta-line uses a parts-array helper so missing `author`/`date`/`reading_time` doesn't leave stray `·` separators. ~250 Paul Graham essays + other tag-less posts no longer read as broken cards.
+- **Per-source `public_description` column** (migration 014) + 46 hand-written ~40-60-word blurbs. Rendered on `/sources` cards and `/source/[slug]` headers. Curator's voice; down-indexes tech/AI per the saved feedback memory.
+- **Source expansion** (migration 010 + per-source backfills): 19 new sources across humanities/nature/place/adventure (Hakai, Atlas Obscura, Public Domain Review, Sapiens, Granta, Baffler, The Point, JSTOR Daily, Lapham's, n+1, American Scholar, Dissent, Roads & Kingdoms, Africa Is a Country, Outside, The Drake, bioGraphic, Emergence, The Dial). Brings active sources from 27 → 46.
+- **Fetch-strategy retunes**:
+  - Harper's switched from sitemap to RSS (Cloudflare was 403'ing the sitemap walker). 10 recent articles ingested.
+  - National Geographic sitemap URL fixed (was 1-entry stub) + tightened URL pattern to `{category}/article/{slug}`. 96 articles ingested.
+  - The Dial sitemap regex tightened to exclude `/articles/category/*` and `/articles/tag/*` index pages; 18 false-positive index rows deleted in prod.
+- **`/lists/[id]` page polish**: read items gray-out + sort to the bottom; "N unread" count in the header. Pure visual reorder — curator's stored ordering preserved.
+- **Mixed-source `/browse`**: new `sort=mixed` (default for the wide browse view) uses `row_number() OVER (PARTITION BY source_id ORDER BY created_at DESC)` so page 1 shows one article per source instead of being dominated by whichever publisher we ingested last. 3-tuple cursor (`rank|created_at|id`) keeps keyset pagination clean.
+- **Paywall awareness**:
+  - Per-article: `articles.access_tier` column (migration 011) populated at ingest from publisher meta tags (`article:content_tier`, schema.org `isAccessibleForFree`). Atlantic emits honest signals; NYer/Wired/Harper's tag everything `free` even when metered.
+  - Per-source curator hint: `sources.paywall_hint` (migration 012), seeded `metered` for Atlantic/NYer/Wired/Harper's.
+  - `ArticleSummary` model_validator resolves the stricter of `(article.access_tier, source.paywall_hint)` so the UI sees one consolidated value.
+  - `<AccessTierChip>` renders "Free quota" (amber) for metered, "Paywall" (gray) for locked. Hidden for free/unknown.
+
+### Carry-forward
+- OG image for `zolalongform.com` — currently inherits article default. `next/og` path crashed twice (Satori font issues); deferred to a static PNG generated offline.
+- Harper's historical archive — RSS only covers recent. The full 175-year archive is gated behind Cloudflare bot detection; out of scope until a User-Agent allowlist is negotiated.
+- `_fonts/` cleanup: the BFO ttf we vendored briefly during the favicon experiments is gone now, but the failed `app/_fonts/` machinery is documented in commit history if anyone wonders.
+
+---
+
+## Phase 17 light — Sentry + monitoring dashboards
+
+**Status (2026-06-03)**: shipped. Activation pending DSN env vars in hosting envs.
+
+### Shipped
+- **FastAPI Sentry**: `sentry-sdk[fastapi]==2.18.0` in `services/api/requirements.txt`. `app/main.py` initializes with `StarletteIntegration` + `FastApiIntegration` + `AsyncPGIntegration`. 10% transaction sampling, `send_default_pii=True` per Sentry's current recommendation. Silent no-op when `SENTRY_DSN` is unset.
+- **Next.js Sentry**: `@sentry/nextjs` 8.x + `sentry.{client,server,edge}.config.ts` + `instrumentation.ts` + `withSentryConfig` wrap in `next.config.mjs`. `app/error.tsx` pipes through `Sentry.captureException`. Source-map upload gated on `SENTRY_AUTH_TOKEN`.
+- **Activation**: Sentry org `zola-bf` created with `javascript-nextjs` (web) and `python-fastapi` (api) projects. DSNs set in Vercel (`NEXT_PUBLIC_SENTRY_DSN`) and Render (`SENTRY_DSN`). Both ends reporting.
+- **DEPLOYMENT.md § Monitoring**: one-time setup runbook + dashboards to check weekly (Sentry Issues, Render Metrics, Supabase DB, Vercel Analytics).
+- **Real bugs caught by Sentry** within hours of activation: `Follow` has no `.id` column (3 routes silently broken), `select(current.id)` UUID-as-column expression in leaderboard, `204` DELETE handler with `-> None` return annotation (the missing Render deploys for two days were behind this single import-time `AssertionError`).
+
+### Carry-forward
+- Alerts: email on error-rate > 1% — not configured yet, just defaults.
+- UptimeRobot on `/healthz` — documented in DEPLOYMENT.md, not yet set up.
+- Phase 17.5 (PostHog) — documented in ROADMAP as the next escalation.
+
+---
+
+## Admin dashboard + opt-in user directory
+
+**Status (2026-06-03)**: shipped.
+
+### Shipped
+- **`GET /api/admin/dashboard`** (admin-gated): totals (users/articles/ratings/finishes/saves), per-day series (signups/DAU/finishes, last 30d), engagement (active 1d/7d/30d, save→finish rate), top-10 lists (articles by finishes, sources by saves + finishes). Single endpoint, ~10 SQL queries.
+- **`/admin/dashboard` page**: five headline tiles + three Plotly line charts (drag-to-zoom, hover tooltips, PNG export) lazy-loaded via `plotly.js-basic-dist-min` + `react-plotly.js/factory`. Three top-N tables. Nav `Admin` link points here.
+- **`GET /api/admin/users`** (admin-gated): searchable directory joining `profiles` → `auth.users` (for email) → `events` (last active) → `user_article_states` (saved + finished counts). Supports `?q=` and `?days=N`.
+- **`/admin/users` page**: search input + time-range filter (1d/7d/30d/90d/all), copy-email per row, signup + last-active dates.
+- **Public opt-in directory** at `/users` (signed-in viewers only): migration 018 added `profiles.discoverable boolean default false`. Settings page toggle. `GET /api/users?sort=active|newest|name` returns opt-in profiles with follower counts + `am_following` for the viewer. `<FollowButton>` inline. Closes the "no way to find people to follow" gap.
+
+### Decisions
+- **Discoverable is opt-in, not opt-out.** Defaults to hidden — `/u/{username}` stays accessible by URL either way. Long-form readers tend to dislike being indexed.
+- **Plotly chosen over Recharts/visx** because the user explicitly wanted plotly's zoom/pan/hover ergonomics. Lazy-load keeps the bundle off the public surface.
+- **Admin dashboard sits on existing `events` table** rather than introducing a new analytics layer. PostHog is the next escalation when this runs out of road (documented in ROADMAP § Phase 17.5).
+
+---
+
+## Gamification: ratings, Elo, leaderboard, comments
+
+**Status (2026-06-03)**: shipped end-to-end. Carry-forward: pairwise Elo needs real volume to stabilize.
+
+### Shipped
+- **Per-finish rating** (migration 013): `user_article_states.rating` (`LOVED | LIKED | OK | null`). New `PUT /api/me/articles/{id}/rating` endpoint. Inline 3-button strip on the article page appears when `status=FINISHED`.
+- **Personal top-rated** at `/u/{username}?tab=top`: public (it's the personal canon). New `GET /api/users/{username}/top-rated` orders by `(tier ASC, elo_score DESC, finished_at DESC)`.
+- **Profile stats card** above the tab nav: 6 tiles (Finished / Hours read / Streak / Sources explored / Top source / Avg length). Hidden when the user has zero finishes so brand-new profiles aren't accusatory.
+- **Pairwise comparisons** (migration 015): `article_comparisons` table (user_id, article_a < article_b, winner_id, unique-pair-per-user). `<ComparePrompt>` component appears after a rating, asks "Which did you prefer?", chains votes by fetching the next same-tier candidate via `GET /api/me/articles/{id}/compare-candidate`.
+- **Elo ranking** (migration 016): `article_elo_ratings` (user_id, article_id, score, comparison_count). `app/elo.py` implements standard Elo with K=32, initial 1200. `submit_comparison` atomically inserts the vote + applies the Elo update to both articles. Top-rated query orders by Elo within tier.
+- **Hours leaderboard** at `/leaderboard`: scoped to viewer + people they follow (NOT global — global rewards skim-reading). Tabs for `week|month|all_time`. New `GET /api/leaderboard/hours?period=...`.
+- **Article comments** (migration 019): flat (no threading), signed-in to write, public to read. Soft delete via `deleted_at`. `GET/POST /api/articles/{id}/comments`, `DELETE /api/comments/{id}` (owner or admin). Inline `<Comments>` component at the bottom of every article page; 2000-char limit, auto-linkified URLs, optimistic delete.
+- **Discover deck rating weighting**: `for_discover_deck` now blends a per-article rating score (Bayesian-soft floor for low-rater articles) at 15% of the score. Articles with no ratings stay neutral (0.5) so unrated content isn't penalized.
+
+### Carry-forward
+- Elo is path-dependent until enough comparisons exist. A batch Bradley-Terry recompute is the next iteration once the comparison pool grows.
+- Notifications on reply / mention: not built.
+- Markdown in comments: explicitly skipped — plain-text + auto-link only.
+- Threading: skipped per design — flat keeps the surface text-first.
+
+---
+
+## Phase 18 — Embeddings + semantic search
+
+**Status (2026-06-04)**: end-to-end shipped. Backfill running in GHA cron (~72% as of last check).
+
+### Shipped
+- **pgvector schema** (migration 017): `articles.embedding vector(384)` matching `sentence-transformers/all-MiniLM-L6-v2`. Partial index where `embedding is not null`. HNSW index deferred until article count crosses ~10k (currently 3,468).
+- **Embedding pipeline** in `packages/ingest`:
+  - `[embeddings]` optional dep group (`sentence-transformers` + `torch` CPU). Base ingest install stays light — Render API doesn't need ML deps.
+  - `embeddings.py`: lazy-loaded model, `compute_embedding` + `compute_embeddings_batch`. Normalized output for cheap cosine = dot product.
+  - `backfill_embeddings.py`: window-driven, Ctrl-C-safe, pgvector `[v1,v2,...]::vector` literal cast for asyncpg.
+- **GHA `ingest.yml`**: installs `[embeddings]` extra, caches the 80MB HuggingFace model between runs, runs `backfill_embeddings --limit 500` after each ingest tick. Timeout bumped 20m → 30m.
+- **Embedding-based recs** in `services/api/app/recs/`:
+  - `profile.py` new `build_user_embedding_profile()` — weighted centroid of the user's positively-signaled article embeddings. Status weights + recency boost + DISMISSED-pulls-away semantics match the topic profile. Returns `None` during cold start so callers fall back.
+  - `scorer.py` new `dense_cosine()` helper; `score_article()` takes optional `similarity` kwarg that overrides topic cosine when supplied.
+  - `feed.py` `for_you_feed` + `for_discover_deck` + `related_articles` all now blend `dense_cosine(user_emb, article_emb) * 0.7 + topic_cosine * 0.3` when both sides have embeddings; topic-only otherwise. Degrades gracefully through the backfill window.
+- **Semantic search** at `/api/search?mode=keyword|semantic|hybrid` with `mode_used` in response:
+  - Semantic: embed query, find nearest articles by pgvector `<=>` (cosine distance).
+  - Hybrid: interleave keyword + semantic ranks, dedupe by id.
+  - Behind `SEMANTIC_SEARCH_ENABLED` env var since the model (~250MB RAM) is tight on Render free tier. Falls back to keyword silently when off / model unavailable / no embedded articles yet.
+
+### Decisions
+- **Local sentence-transformers, not OpenAI**, per the roadmap. Free, runs in GHA, no per-query cost. Tradeoff: query-time embedding needs sentence-transformers in the API runtime, which Render free tier can barely fit.
+- **Blend, don't swap** topic + embedding cosine. Embedding is the workhorse but topic-dict captures explicit interests the user picked in onboarding.
+- **HNSW deferred** — sequential scan is faster than HNSW overhead below ~10k articles.
+
+### Carry-forward
+- Activate semantic search in production (`SEMANTIC_SEARCH_ENABLED=true` on Render + install `sentence-transformers` there) — likely needs Render Starter tier first.
+- HNSW index when article count crosses 10k.
+- Per-user score precomputation (`feed_cache` table) when live scoring at request time becomes expensive.
+- Log search queries as a new event type → autocomplete + saved-search digests.
+
+---
+
 ## Done. Phase 9 (mobile app) and the §15 Scaling Roadmap migrations live there.
 
 ---

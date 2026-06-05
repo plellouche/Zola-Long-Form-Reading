@@ -210,12 +210,28 @@ longform/
 
 ```
 User ──< Follow >── User
-User ──< UserArticleState >── Article
+User ──< UserArticleState (status, rating) >── Article
+User ──< ArticleComparison >── (Article, Article)        # Beli-core pairwise votes
+User ──< ArticleEloRating >── Article                    # per-user, per-article Elo
 User ──< List ──< ListItem >── Article
+User ──< Comment >── Article                             # flat, soft-deletable
 Article ──< ArticleTopic >── Topic
-Article >── Source
+Article >── Source                                       # paywall_hint, public_description
+Article.embedding pgvector(384)                          # sentence-transformer
 User ──< Event
 ```
+
+**Migrations applied** (as of 2026-06-04): 001–019. Recent ones beyond the original phased plan, in order:
+- `010` — humanities source expansion (Hakai, Atlas Obscura, Lapham's, n+1, Granta, etc.)
+- `011` — `articles.access_tier`
+- `012` — `sources.paywall_hint`
+- `013` — `user_article_states.rating`
+- `014` — `sources.public_description`
+- `015` — `article_comparisons`
+- `016` — `article_elo_ratings`
+- `017` — `articles.embedding` + pgvector extension
+- `018` — `profiles.discoverable`
+- `019` — `comments`
 
 ### Table definitions
 
@@ -419,13 +435,17 @@ User submits URL in UI
 
 ## 10. Recommendation Engine
 
+**Current state (2026-06-04)**: hybrid embedding + topic cosine blend, plus aggregate rating signal on the discover deck. See PROGRESS.md § Phase 18 for the implementation history.
+
 ### Signals used
 
 | Signal | Weight | Notes |
 |---|---|---|
-| Topic overlap | High | Cosine similarity of article topic vectors |
+| **Embedding similarity** | **High (workhorse)** | Cosine between user-centroid embedding and article embedding (sentence-transformers all-MiniLM-L6-v2). When both sides are embedded, this is 70% of the similarity component; topic-dict cosine fills in the other 30% |
+| Topic overlap | Medium | Cosine of `{topic_id: weight}` dicts. Falls back to primary signal during embedding cold start |
 | User saves | High | Strong positive signal |
 | User finishes | Very high | Strongest positive signal |
+| Aggregate ratings | Medium (discover deck) | LOVED=2 / LIKED=1 / OK=0 averaged across raters, Bayesian-soft floor. 15% of discover-deck score |
 | Social boost | Medium | Saved/finished by followed users |
 | Source trust prior | Medium | `sources.trust_score` as baseline |
 | Freshness | Medium | Decay function on publication date |
@@ -905,9 +925,11 @@ For clarity, here's what's been actively rejected — not just deferred:
 - **Auto-curating "what's popular elsewhere"** via Twitter/Reddit/HN scraping. Becomes a moderation nightmare; defeats the high-signal curation thesis.
 - **Real-time ingestion** (sub-hour). Longform isn't a news app; 6h polling is correct.
 - **Cross-source dedup beyond `canonical_url`.** Two outlets running the same essay is rare; fuzzy-matching isn't worth the effort until users complain.
-- **In-app commenting / threading.** Wrong app shape; we point to sources, not host discussion.
+- ~~**In-app commenting / threading.**~~ **Reconsidered and shipped flat comments (2026-06-04).** Signed-in to write, public to read, no markdown, no threading. Still rejecting: nested threads, comment voting/sort, rich-text bodies.
 - **Algorithmic re-ranking that hides articles entirely.** The recs engine surfaces, never hides. `DISMISSED` is user-driven.
 
 ---
 
 *This document is the authoritative source of truth. Update it as decisions are made, phases complete, or scope changes.*
+
+*Last reviewed: 2026-06-04 — after Phase 17 light + Phase 18 first slice + gamification (ratings/Elo/pairwise/leaderboard/comments) shipped.*
