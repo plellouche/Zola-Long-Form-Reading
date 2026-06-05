@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,12 +115,16 @@ async def create_comment(
     return out
 
 
-@router.delete("/api/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/api/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,  # 204 must have no body — Response signals empty
+)
 async def delete_comment(
     comment_id: UUID,
     current: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-) -> None:
+):
     comment = await session.scalar(
         select(Comment).where(Comment.id == comment_id, Comment.deleted_at.is_(None))
     )
@@ -139,3 +143,4 @@ async def delete_comment(
 
     comment.deleted_at = datetime.now(timezone.utc)
     await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
