@@ -84,8 +84,10 @@ async def hours_leaderboard(
     profiles = (await session.execute(profiles_q)).scalars().all()
 
     # Followers/following counts in one shot keeps the response sane.
+    # Follow has no `id` column — composite PK on (follower_id, followee_id) —
+    # so func.count() counts rows directly.
     follower_counts_q = (
-        select(Follow.followee_id, func.count(Follow.id))
+        select(Follow.followee_id, func.count())
         .where(Follow.followee_id.in_(ids))
         .group_by(Follow.followee_id)
     )
@@ -93,7 +95,7 @@ async def hours_leaderboard(
         row[0]: int(row[1]) for row in (await session.execute(follower_counts_q)).all()
     }
     following_counts_q = (
-        select(Follow.follower_id, func.count(Follow.id))
+        select(Follow.follower_id, func.count())
         .where(Follow.follower_id.in_(ids))
         .group_by(Follow.follower_id)
     )

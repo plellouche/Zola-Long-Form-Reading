@@ -150,7 +150,8 @@ async def list_discoverable_users(
     follower_count_sq = (
         select(
             Follow.followee_id.label("uid"),
-            func.count(Follow.id).label("c"),
+            # Follow has no `id` column — composite PK on (follower_id, followee_id).
+            func.count().label("c"),
         )
         .group_by(Follow.followee_id)
         .subquery()
