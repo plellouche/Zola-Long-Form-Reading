@@ -6,8 +6,20 @@ from uuid import UUID
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, TSVECTOR, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import UserDefinedType
 
 from ..database import Base
+
+
+class _PgVector(UserDefinedType):
+    """Minimal pgvector mapping. asyncpg returns the literal '[v1,v2,...]'
+    string; callers parse via _parse_pgvector. Read-only from the ORM —
+    embedding writes go through raw SQL in the backfill job."""
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw):
+        return "vector"
 
 
 CONTENT_POLICY_CHECK = "content_policy in ('REDIRECT_ONLY', 'EMBED_ALLOWED', 'FULLTEXT_ALLOWED')"
@@ -116,6 +128,8 @@ class Article(Base):
     )
     # Generated column maintained by Postgres (migration 002). Read-only from ORM.
     search_tsv: Mapped[str] = mapped_column(TSVECTOR, nullable=False, deferred=True)
+    # pgvector(384), added in migration 017. Backfilled by the ingest embedding job.
+    embedding: Mapped[str | None] = mapped_column(_PgVector(), nullable=True, deferred=True)
 
     source: Mapped[Source] = relationship(lazy="selectin")
     topic_links: Mapped[list["ArticleTopic"]] = relationship(
