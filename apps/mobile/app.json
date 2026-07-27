@@ -15,13 +15,16 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.zola.mobile"
+      "bundleIdentifier": "com.zola.mobile",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#FAFAF8"
-      }
+      },
+      "package": "com.zola.mobile",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -39,6 +42,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "63a59c04-35b4-4dd9-be74-193e0f91de4f"
+      }
+    },
+    "owner": "plellouche"
   }
 }
